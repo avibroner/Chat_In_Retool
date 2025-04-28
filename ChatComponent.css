@@ -1,0 +1,89 @@
+/* ChatComponent.css */
+@import url('https://fonts.googleapis.com/css2?family=Heebo&display=swap');
+
+.chat-container {
+    display: flex;
+    flex-direction: column;
+    background: url('https://futureflow.co.il/Background_for_messages (2).jpg') no-repeat center center; 
+    background-size: cover;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px;
+    height: 500px;
+    width: 100%;
+    box-sizing: border-box;
+    font-family: 'Heebo', sans-serif;
+  }
+  
+  .messages-list {
+    flex: 1;                      /* תופסת את מירב הגובה לזירת ההודעות */
+    overflow-y: auto;             /* גלילה אנכית אם יש הרבה הודעות */
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+  }
+  .bubble {
+    max-width: 70%;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 10px;
+    line-height: 1.4;
+    overflow-wrap: break-word; /* גלישת טקסט אוטומטית */
+    word-break: break-word; /* שבר מילים ארוכות אם אין רווחים */
+    /* טקסט כבר יקבל כיוון אוטומטי מ-dir="auto" */
+  }
+  .bubble.user {
+    align-self: flex-end;         /* מיקום בועה של המשתמש - לימין */
+    background-color: #dcf8c6;    /* ירוק בהיר בסגנון וואטסאפ */
+  }
+  .bubble.other {
+    align-self: flex-start;       /* מיקום בועה של האחר/מערכת - לשמאל */
+    background-color: #ffffff;    /* לבן */
+    border: 1px solid #ddd;
+  }
+  .sender {
+    font-weight: bold;
+  }
+  .input-area {
+    direction: rtl;
+    display: flex;
+    gap: 5px;
+    margin-top: 5px;
+  }
+  .input-area textarea {
+    width: 80%;
+    text-align: right;
+    padding: 6px;
+    font-size: 12px;
+    border-radius: 10px;
+    font-family: 'Heebo', sans-serif;
+  } 
+  .input-area button {
+    background: none;
+    border: none;
+    cursor: pointer;
+    border-radius: 50%; /* הופך את הכפתור לעגלגל */
+    padding: 10px;
+  }
+  
+  .input-area button img {
+    width: 20px; /* הגדרת גודל לאייקון */
+  }
+  
+  .message-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #777;
+    margin-bottom: 5px;
+  }
+  .message-text {
+    white-space: pre-wrap;
+    font-size: 12px;
+  }
+  .timestamp {
+    color: #bbb;
+    font-size: 10px;
+    text-align: left;
+  }
+  
