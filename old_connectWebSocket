@@ -1,0 +1,94 @@
+try {
+  console.log('Starting WebSocket connection...');
+  let socket;
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 3;
+  const reconnectDelay = 5000; // 5 seconds delay between reconnect attempts
+
+  const connect = () => {
+    socket = new WebSocket('wss://chat.futureflow.co.il/');
+
+    socket.onopen = () => {
+      console.log('Connected to WebSocket server');
+      // שלח את chat_id ו-userId בעת החיבור
+      socket.send(JSON.stringify({
+        chat_id: chatComponent1.chatId,
+        userId: chatComponent1.userId
+      }));
+     // אפס את מספר הניסיונות לאחר חיבור מוצלח
+      reconnectAttempts = 0;
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        console.log('Raw WebSocket message:', event.data);
+        const newMsg = JSON.parse(event.data);
+        console.log('Parsed WebSocket message:', newMsg);
+        if (newMsg.sender && newMsg.text && newMsg.timestamp) {
+          const messageToAdd = {
+            comment_id: `temp-${Date.now()}`,
+            related_to_id: chatComponent1.chatId,
+            comment_text: newMsg.text,
+            created_by_name: newMsg.sender,
+            created_by: newMsg.created_by || (newMsg.sender === chatComponent1.username ? chatComponent1.userId : 'system'),
+            created_at: newMsg.timestamp,
+          };
+          console.log('Message to add:', messageToAdd);
+
+          // קבל את המערך הנוכחי של ההודעות מ-PreviousMessages.value
+          const currentMessages = PreviousMessages.value;
+          console.log('Current messages:', currentMessages);
+
+          // ודא שהערך הנוכחי הוא מערך
+          const existingMessages = Array.isArray(currentMessages) ? currentMessages : [];
+          const existingTimestamps = new Set(existingMessages.map((msg) => msg.created_at));
+
+          // בדוק אם ההודעה כבר קיימת
+          let updatedMessages;
+          if (!existingTimestamps.has(messageToAdd.created_at)) {
+            updatedMessages = [...existingMessages, messageToAdd];
+            console.log('Updated messages array:', updatedMessages);
+           insertChatMessage.trigger(
+              {additionalScope: {
+                message: updatedMessages
+              }}
+            )   
+          } else {
+           updatedMessages = existingMessages;
+            console.log('Message already exists, skipping update');
+          }
+
+          // עדכן את PreviousMessages.value עם המערך המעודכן
+          PreviousMessages.setValue(updatedMessages);
+          console.log('Final PreviousMessages.value after update');
+        } else {
+         console.error('Invalid message format:', newMsg);
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
+    };
+
+    socket.onclose = () => {
+      console.log('Disconnected from WebSocket server');
+      if (reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+        setTimeout(connect, reconnectDelay);
+      } else {
+        console.error('Max reconnect attempts reached. Giving up.');
+      }
+    };
+
+
+    socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
+  };
+
+  // התחל את החיבור הראשוני
+  connect();
+} catch (error) {
+  console.error('Error in connectWebSocket:', error);
+}
+
