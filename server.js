@@ -8,6 +8,9 @@ const wss = new WebSocket.Server({ port: 8080 }); // WebSocket server
 const chatRooms = new Map();
 const wsMetadata = new Map();
 
+//מפה שמקשרת User ID ל-WebSocket Instance (למעקב אחרי חיבור יחיד למשתמש)
+const userToWsMap = new Map();
+
 const N8N_WEBHOOK_URL = 'https://n8n.futureflow.co.il/webhook/569f1361-16a7-4340-91a4-17d13b2b9dae';
 
 const getConnectedUsersInChat = (currentChatId) => {
@@ -90,6 +93,42 @@ wss.on('connection', (ws) => {
                         return;
                     }
 
+                    // **קריטי:** ניתוק חיבורים קודמים עבור אותו משתמש, אם קיימים
+                    if (userToWsMap.has(created_by)) {
+                        const oldWs = userToWsMap.get(created_by);
+                        // ודא שזה לא אותו חיבור חדש
+                        if (oldWs !== ws) {
+                            console.warn(`Server: User ${created_by} is already connected via another socket. Terminating old socket.`);
+                            if (oldWs.readyState === WebSocket.OPEN) {
+                                oldWs.close(1000, 'New connection established for same user'); // סגירה נקייה של הישן
+                            } else if (oldWs.readyState !== WebSocket.CLOSED) {
+                                oldWs.terminate();
+                            }
+                            // נקה את הישן מכל החדרים שלו (אם לא נוקה על ידי onclose)
+                            const oldMetadata = wsMetadata.get(oldWs);
+                            if (oldMetadata && chatRooms.has(oldMetadata.chat_id)) {
+                                chatRooms.get(oldMetadata.chat_id).delete(created_by);
+                                if (chatRooms.get(oldMetadata.chat_id).size === 0) chatRooms.delete(oldMetadata.chat_id);
+                                console.log(`Server: Cleaned up old chat room entry for user ${created_by} in chat ${oldMetadata.chat_id}.`);
+                            }
+                            wsMetadata.delete(oldWs); // נקה גם מהמטאדאטה
+                        }
+                    }
+                    userToWsMap.set(created_by, ws); // קשר את היוזר לחיבור החדש
+
+                    // הסרה מהחדר הישן (אם היה) לפני הוספה לחדש
+                    // הלוגיקה של `userToWsMap` ו-`terminate` למעלה מטפלת בזה במידה רבה.
+                    // רק לוודא שיוסר מהחדר הישן שלו
+                    // ניתן למצוא את החדר הישן באמצעות wsMetadata
+                    const existingMetadataForThisWs = wsMetadata.get(ws);
+                    if (existingMetadataForThisWs && existingMetadataForThisWs.chat_id && existingMetadataForThisWs.chat_id !== chat_id) {
+                        if (chatRooms.has(existingMetadataForThisWs.chat_id)) {
+                            chatRooms.get(existingMetadataForWs.chat_id).delete(created_by);
+                            if (chatRooms.get(existingMetadataForWs.chat_id).size === 0) chatRooms.delete(existingMetadataForWs.chat_id);
+                            console.log(`Server: User ${created_by} left old chat ${existingMetadataForWs.chat_id} to join new chat ${chat_id}.`);
+                        }
+                    }
+
                     if (!chatRooms.has(chat_id)) {
                         chatRooms.set(chat_id, new Map());
                     }
@@ -102,6 +141,7 @@ wss.on('connection', (ws) => {
                         userJustJoined = true;
                     } else {
                         console.log(`User ${created_by} already in chat ${chat_id}. Skipping re-join.`);
+                        wsMetadata.set(ws, { chat_id, userId: created_by, username: sender_name }); // ודא עדכון המטאדאטה
                     }
                     // **חדש:** שלח PONG מיד עם ההצטרפות לוודא שהוא חי
                     ws.lastPong = Date.now();
@@ -243,6 +283,12 @@ ws.on('close', (code, reason) => { // **שינוי:** קבל גם code ו-reason
 
     if (closedSocketMetadata) { // ודא שיש לנו מידע על הלקוח שנסגר
         const { chat_id, userId, username } = closedSocketMetadata;
+
+        //הסר את היוזר מ-userToWsMap
+        if (closedSocketMetadata && userToWsMap.get(closedSocketMetadata.userId) === ws) {
+          userToWsMap.delete(closedSocketMetadata.userId);
+          console.log(`Server: User ${closedSocketMetadata.userId} removed from userToWsMap.`);
+          }
 
         // **קריטי:** נקה את הלקוח מ-chatRooms באופן ודאי
         if (chatRooms.has(chat_id)) {
