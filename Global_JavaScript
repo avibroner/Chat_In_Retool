@@ -1,0 +1,40 @@
+// Global JavaScript
+// (זה קוד שרץ פעם אחת בטעינת האפפ, ומאזין לשינויים)
+
+const currentUser = localStorage.values.user_id; // נניח שזה currentUser של Retool
+
+// שמור את ה-chatId האחרון שראינו
+let lastChatId = null;
+
+  const currentChatId = urlparams.id; // קבל את ה-chatId הנוכחי מה-URL
+    
+    // אם ה-chatId השתנה, או שזו טעינה ראשונית ו-chatId קיים, ופרטי היוזר קיימים
+    if (
+        currentChatId && currentChatId.length > 5 && // יש chatId חוקי
+        (currentChatId !== lastChatId || !window.myGlobalWebSocket) && // ה-chatId השתנה, או שאין חיבור בכלל
+        currentUser && currentUser.id && currentUser.username // ופרטי היוזר קיימים
+    ) {
+        console.log(`Global JS: Chat ID changed to ${currentChatId} or no active WebSocket. Triggering connectWebSocket.`);
+        // הפעל את connectWebSocket Query
+        // ודא שהוא מקבל את הנתונים הנחוצים לו (אלה שמועברים ב-chatComponent1)
+        // עכשיו chatComponent1 לא נגיש כאן, אז נצטרך להעביר את הנתונים ל-Query
+        connectWebSocket.trigger({
+            additionalScope: {
+                chat_id_param: currentChatId,
+                user_id_param: currentUser.id,
+                username_param: currentUser.username
+                // אם צריך ticketWatchers, זה יהיה מורכב יותר
+            }
+        });
+        lastChatId = currentChatId; // עדכן את ה-chatId האחרון שנבדק
+    } else if (!currentChatId && lastChatId) { // אם עברנו מעמוד צ'אט לדף בלי chatId
+        console.log(`Global JS: Left chat page. Chat ID changed from ${lastChatId} to null. Attempting to close WebSocket.`);
+        if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
+            window.myGlobalWebSocket.close(1000, 'Left chat context');
+            window.myGlobalWebSocket = null;
+        } else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
+            window.myGlobalWebSocket.terminate();
+            window.myGlobalWebSocket = null;
+        }
+        lastChatId = null; // אפס את ה-chatId האחרון
+    }
