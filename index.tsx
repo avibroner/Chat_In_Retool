@@ -232,22 +232,42 @@ export const ChatComponent: FC = () => {
     // **חדש (קריטי לסגירה נקייה):** ניקוי חיבור WebSocket כאשר הקומפוננטה נעלמת
     // (בדרך כלל כשעוברים עמוד ב-Retool או סוגרים את ה-Modal)
     useEffect(() => {
-    return () => {
-        const currentSocket = (window as any).myGlobalWebSocket;
-        if (currentSocket) { // וודא שקיים socket בכלל
-            console.log(`ChatComponent: Unmounting, found WebSocket connection in state ${currentSocket.readyState}. Attempting to close.`);
-            if (currentSocket.readyState === WebSocket.OPEN || currentSocket.readyState === WebSocket.CONNECTING) {
-                currentSocket.close(1001, 'Component Unmount/Page Change'); // קוד 1001 = Going Away
-            } else if (currentSocket.readyState !== WebSocket.CLOSED) {
-                // אם החיבור במצב אחר (closing/connecting), ננסה לנתק בכוח
-                currentSocket.terminate();
+        // שומר את ה-chatId הקודם כדי שנדע מאיזה צ'אט עזבנו
+        let previousChatId = chatId.value; 
+            return () => {
+            const currentSocket = (window as any).myGlobalWebSocket;
+            if (currentSocket && currentSocket.readyState === WebSocket.OPEN && previousChatId && userId.value) {
+                console.log(`ChatComponent: Sending LEAVE_CHAT for chat ${previousChatId} on unmount/chat change.`);
+                try {
+                    currentSocket.send(JSON.stringify({
+                        type: 'LEAVE_CHAT', // סוג הודעה חדש
+                        chat_id: previousChatId,
+                        created_by: userId.value,
+                        sender_name: username.value, // כדי שלשרת יהיה מידע לוגינג
+                        timestamp: new Date().toISOString()
+                    }));
+                } catch (e) {
+                    console.error('ChatComponent: Error sending LEAVE_CHAT message on unmount:', e);
+                }
+            } else {
+                console.log('ChatComponent: No active socket or missing data to send LEAVE_CHAT on unmount.');
             }
-            (window as any).myGlobalWebSocket = null; // נקה את ההפניה הגלובלית
-        } else {
-            console.log('ChatComponent: Unmounting, no active WebSocket found.');
-        }
-    };
-}, []); // מערך תלויות ריק מבטיח שזה ירוץ רק ב-mount וב-unmount
+
+            // לוגיקת סגירת חיבור WebSocket קיימת
+            if (currentSocket) {
+                console.log(`ChatComponent: Unmounting, found WebSocket connection in state ${currentSocket.readyState}. Attempting to close.`);
+                if (currentSocket.readyState === WebSocket.OPEN || currentSocket.readyState === WebSocket.CONNECTING) {
+                    currentSocket.close(1001, 'Component Unmount/Page Change');
+                } else if (currentSocket.readyState !== WebSocket.CLOSED) {
+                    currentSocket.terminate();
+                }
+                (window as any).myGlobalWebSocket = null;
+                console.log('ChatComponent: Global WebSocket reference cleared on unmount.');
+            } else {
+                console.log('ChatComponent: Unmounting, no active WebSocket found.');
+            }
+        };
+    }, []); // מערך תלויות ריק מבטיח שזה ירוץ רק ב-mount וב-unmount
 
     
   // Scroll to the bottom when messages update 
