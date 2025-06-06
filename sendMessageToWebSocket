@@ -1,0 +1,49 @@
+// sendMessageToWebSocket (Retool Query - Triggered by onMessageSent event from ChatComponent)
+
+const currentSocket = window.myGlobalWebSocket; // נגישה לאובייקט ה-WebSocket מהמשתנה הגלובלי
+
+// ודא שכל הנתונים הנדרשים זמינים לפני ניסיון השליחה
+// חשוב: chatComponent1 הוא אובייקט ה-Retool של הקומפוננטה שלך
+// נגישה לערכים של ה-state variables של הקומפוננטה באמצעות .value
+if (!chatComponent1.newMessage.chat_id || !chatComponent1.username || !chatComponent1.newMessage.message || !chatComponent1.userId || !chatComponent1.ticketWatchers) {
+    console.error('sendMessageToWebSocket: Missing critical data. Cannot send message.', {
+        chat_id: chatComponent1.newMessage.chat_id,
+        sender_name: chatComponent1.username,
+        message: chatComponent1.newMessage.message,
+        created_by: chatComponent1.userId,
+        ticket_watchers_count: chatComponent1.ticketWatchers ? chatComponent1.ticketWatchers.length : 0
+    });
+    // ניתן להציג הודעה למשתמש כאן, לדוגמה:
+    // utils.showNotification({ title: 'שגיאת שליחה', description: 'חסרים נתונים חשובים בהודעה. אנא רענן את העמוד.', variant: 'error' });
+    return; // אל תמשיך אם חסר מידע קריטי
+}
+
+// בנה את אובייקט ההודעה לשליחה לשרת
+const messageDataToSend = {
+    chat_id: chatComponent1.newMessage.chat_id,
+    sender_name: chatComponent1.username,
+    message: chatComponent1.newMessage.message,
+    created_by: chatComponent1.userId, // שולח את ה-User ID בשדה created_by
+    type: "CHAT_MESSAGE",
+    ticket_watchers: chatComponent1.ticketWatchers // שולח את מערך הצופים
+};
+
+// נסה לשלוח את ההודעה דרך חיבור ה-WebSocket הקיים
+if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+    currentSocket.send(JSON.stringify(messageDataToSend));
+    console.log('Message sent via existing WebSocket:', messageDataToSend);
+} else {
+    // אם חיבור ה-WebSocket אינו פתוח, שמור את ההודעה בהמתנה ונסה לחבר מחדש
+    console.log('WebSocket not open. Storing message for retry and attempting to reconnect.');
+    
+    // שמור את ההודעה התלויה ב-Store Value
+    pendingMessage.setValue(messageDataToSend); // pendingMessage הוא Store Value ב-Retool
+    
+    // הפעל את Query connectWebSocket כדי לנסות לחבר מחדש.
+    // connectWebSocket יבדוק אם יש pendingMessage לאחר חיבור מוצלח.
+    connectWebSocket.trigger(); 
+}
+
+// בסיום, נקה את שדה הקלט של ההודעה בקומפוננטה (אם זה לא נעשה כבר ב-handleSend)
+// (במקרה הזה, handleSend בקומפוננטה כבר מנקה את inputValue)
+// chatComponent1.setInputValue(''); // אם היינו מנקים מכאן
