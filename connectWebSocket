@@ -7,10 +7,13 @@ try {
 
   const connect = async () => { 
 
-    // **חדש (קריטי לסגירה יזומה):** לפני ניסיון התחברות חדש, ודא שאין חיבור קיים ופתוח.
+    // לפני ניסיון התחברות חדש, ודא שאין חיבור קיים ופתוח.
     // אם קיים, סגור אותו קודם. זה קורה אם משתמש עובר מטיקט לטיקט.
      if (window.myGlobalWebSocket) {
         console.warn(`connectWebSocket: Found existing WebSocket connection in state ${window.myGlobalWebSocket.readyState}. Attempting to close/terminate it.`);
+        let socketToClose = window.myGlobalWebSocket;
+        window.myGlobalWebSocket = null; // נקה את ההפניה מיד כדי למנוע שימוש חוזר
+
         if (window.myGlobalWebSocket.readyState === WebSocket.OPEN || window.myGlobalWebSocket.readyState === WebSocket.CONNECTING) {
             window.myGlobalWebSocket.close(1000, 'Reconnecting for new chat/user');
         } else if (window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
@@ -21,9 +24,25 @@ try {
         }
         window.myGlobalWebSocket = null; // נקה את ההפניה
 
-        // **חדש (קריטי):** המתן מעט כדי לתת לחיבור הישן זמן להיסגר
-        await new Promise(resolve => setTimeout(resolve, 100)); // המתן 100 מילישניות
-        console.log('connectWebSocket: Waited briefly for old connection to close.');
+       // **קריטי:** המתן מעט כדי לתת לחיבור הישן זמן להיסגר (אסינכרוני)
+        await new Promise(resolve => {
+            let timeoutId;
+            socketToClose.onclose = () => { // ודא ש-onclose של הסוקט הישן מופעל
+                console.log('connectWebSocket: Old socket confirmed CLOSED via onclose.');
+                clearTimeout(timeoutId);
+                resolve();
+            };
+            socketToClose.onerror = (err) => { // טפל גם בשגיאות סגירה
+                console.error('connectWebSocket: Error on old socket during close attempt:', err);
+                clearTimeout(timeoutId);
+                resolve(); // למרות השגיאה, ננסה להמשיך
+            };
+            timeoutId = setTimeout(() => { // גיבוי ל-timeout
+                console.warn('connectWebSocket: Timeout waiting for old socket to close. Proceeding anyway.');
+                resolve();
+            }, 500); // המתנה של 500 מילישניות
+        });
+        console.log('connectWebSocket: Old WebSocket fully processed (closed/terminated). Proceeding to open new one.');
     }
 
     const currentSocketInstance = new WebSocket('wss://chat.futureflow.co.il/');
