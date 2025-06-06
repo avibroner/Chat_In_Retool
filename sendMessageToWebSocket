@@ -41,7 +41,7 @@ if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
     
     // הפעל את Query connectWebSocket כדי לנסות לחבר מחדש.
     // connectWebSocket יבדוק אם יש pendingMessage לאחר חיבור מוצלח.
-    connectWebSocket.trigger(); 
+    Global_JavaScript.trigger(); 
 }
 
 // בסיום, נקה את שדה הקלט של ההודעה בקומפוננטה (אם זה לא נעשה כבר ב-handleSend)
