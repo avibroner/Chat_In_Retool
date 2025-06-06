@@ -1,0 +1,9 @@
+const socket = new WebSocket('wss://chat.futureflow.co.il/');
+socket.onopen = () => {
+  socket.send(JSON.stringify({
+    chat_id: chatComponent1.newMessage.chat_id,
+    sender_name: chatComponent1.newMessage.sender_name,
+    message: chatComponent1.newMessage.message,
+    created_by: chatComponent1.userId,
+  }));
+};
