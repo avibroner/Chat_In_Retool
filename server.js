@@ -179,6 +179,51 @@ wss.on('connection', (ws) => {
                     console.log(`Message from ${sender_name} in ${chat_id} broadcasted and offline watchers sent to n8n.`);
                     break;
 
+            case 'LEAVE_CHAT': //טיפול בהודעת עזיבה יזומה מהלקוח
+                console.log('Server: Handling LEAVE_CHAT request.');
+                if (!chat_id || !created_by) {
+                    console.error('Server: Error - chat_id and created_by are required for LEAVE_CHAT.');
+                    ws.send(JSON.stringify({ error: 'chat_id and created_by required for LEAVE_CHAT' }));
+                    return;
+                }
+
+                const leavingUserMetadata = wsMetadata.get(ws);
+                if (leavingUserMetadata && leavingUserMetadata.userId === created_by && leavingUserMetadata.chat_id === chat_id) {
+                    // הסרה מהחדר
+                    if (chatRooms.has(chat_id)) {
+                        chatRooms.get(chat_id).delete(created_by);
+                        console.log(`User ${created_by} explicitly left chat ${chat_id}. Remaining members: ${chatRooms.get(chat_id).size}.`);
+
+                        // עדכן את רשימת המחוברים ושלח PRESENCE_UPDATE
+                        const currentUsersAfterLeave = getConnectedUsersInChat(chat_id);
+                        const leaveNotificationMessage = {
+                            type: 'PRESENCE_UPDATE',
+                            chat_id: chat_id,
+                            onlineUsers: currentUsersAfterLeave,
+                            timestamp: new Date().toISOString(),
+                            eventType: 'user_left',
+                            affectedUserId: created_by,
+                            affectedUserName: sender_name // השם נשלח מהלקוח
+                        };
+
+                        chatRooms.get(chat_id).forEach((clientSocket) => {
+                            if (clientSocket.readyState === WebSocket.OPEN) {
+                                clientSocket.send(JSON.stringify(leaveNotificationMessage));
+                            }
+                        });
+
+                        if (chatRooms.get(chat_id).size === 0) {
+                            chatRooms.delete(chat_id);
+                        }
+                    } else {
+                        console.warn(`Server: LEAVE_CHAT request for user ${created_by} from chat ${chat_id}, but user not found in chatRooms.`);
+                    }
+                    // לא לנתק את ה-ws כאן, רק להסיר מהחדר. החיבור יכול להישאר פעיל לדף כללי.
+                } else {
+                    console.warn(`Server: LEAVE_CHAT request for ${created_by} from ${chat_id}, but connection metadata does not match.`);
+                }
+                break;
+
                 default:
                     console.warn('Server: Unknown WebSocket message type:', type);
                     ws.send(JSON.stringify({ error: `Unknown message type: ${type}` }));
