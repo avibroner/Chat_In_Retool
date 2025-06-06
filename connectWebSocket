@@ -1,59 +1,71 @@
 // connectWebSocket (Retool Query)
 try {
-  console.log('Starting WebSocket connection...');
+   console.log('Starting WebSocket connection...');
   let reconnectAttempts = 0;
   const maxReconnectAttempts = 3;
   const reconnectDelay = 5000;
 
-  const connect = async () => { // **קריטי: הפוך ל-async**
-    // **קריטי:** לפני ניסיון התחברות חדש, סגור ונקו כל חיבור קודם.
+  // **קריטי:** בדוק כאן, בתחילת ה-Query, אם יש לנו chatId תקני.
+  // אם אין, אל תמשיך לנסות לחבר בכלל.
+  // זה גם המקום לטפל במעבר מעמוד צ'אט לעמוד שאינו צ'אט.
+  if (!chatComponent1.chatId.value || chatComponent1.chatId.value.length < 5 || !chatComponent1.userId.value || !chatComponent1.username.value) {
+      console.warn('connectWebSocket: Not in a chat context (no valid chatId). Attempting to close any existing connection.');
+      // אם יש חיבור קיים (אפילו אם הוא "כללי" או לטיקט אחר), סגור אותו כעת.
+      if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
+          console.warn('connectWebSocket: Closing existing WebSocket connection as not in chat context.');
+          window.myGlobalWebSocket.close(1000, 'Left chat context');
+          window.myGlobalWebSocket = null;
+      } else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
+          console.warn(`connectWebSocket: Terminating existing WebSocket connection in state ${window.myGlobalWebSocket.readyState} as not in chat context.`);
+          window.myGlobalWebSocket.terminate();
+          window.myGlobalWebSocket = null;
+      }
+      return; // צא מכל ה-Query אם אין נתונים תקניים
+  }
+
+  const connect = async () => { // **async**
+    // **קריטי:** לפני ניסיון התחברות חדש, ודא שהחיבור הקיים הוא ל-chatId הנכון.
+    // אם יש חיבור קיים ל-chatId אחר, סגור אותו.
+    // אם אין חיבור, או שהוא לא פתוח, צור חדש.
     if (window.myGlobalWebSocket) {
-        console.warn(`connectWebSocket: Found existing WebSocket connection in state ${window.myGlobalWebSocket.readyState}. Attempting aggressive close/terminate.`);
+        // **לוגיקה משופרת:** אם כבר מחובר, בדוק אם זה לאותו צ'אט
+        const existingMetadata = window.myGlobalWebSocket.metadata; // אם שמרנו metadata ב-global socket
+        if (window.myGlobalWebSocket.readyState === WebSocket.OPEN && existingMetadata && existingMetadata.chat_id === chatComponent1.chatId.value) {
+            console.log('connectWebSocket: Already connected to correct chat. Re-sending JOIN_CHAT to confirm presence.');
+            // פשוט שלח JOIN_CHAT שוב (השרת יטפל ב-already in chat)
+            window.myGlobalWebSocket.send(JSON.stringify({
+                chat_id: chatComponent1.chatId.value,
+                created_by: chatComponent1.userId.value,
+                sender_name: chatComponent1.username.value,
+                type: "JOIN_CHAT"
+            }));
+            return; // צא, אין צורך ליצור חיבור חדש
+        } 
+        // אם מחובר אבל לטיקט אחר, או לא פתוח
+        console.warn(`connectWebSocket: Found existing WebSocket connection (${window.myGlobalWebSocket.readyState}) but not to current chat or not open. Attempting aggressive close/terminate.`);
         
         let socketToClose = window.myGlobalWebSocket;
-        window.myGlobalWebSocket = null; // נקה את ההפניה מיד כדי למנוע שימוש חוזר
+        window.myGlobalWebSocket = null; // נקה את ההפניה מיד
 
-        // נסה לסגור באופן נקי, אבל אם לא פתוח, נתק בכוח.
         if (socketToClose.readyState === WebSocket.OPEN) {
-            socketToClose.close(1000, 'Reconnecting for new chat/user (clean close)'); // סגירה נקייה
+            socketToClose.close(1000, 'Reconnecting for new chat/user (clean close)');
         } else if (socketToClose.readyState === WebSocket.CONNECTING || socketToClose.readyState === WebSocket.CLOSING) {
             console.warn('connectWebSocket: Existing socket in CONNECTING/CLOSING state, terminating aggressively.');
-            socketToClose.terminate(); // נתק בכוח
+            socketToClose.terminate();
         } else if (socketToClose.readyState === WebSocket.CLOSED) {
             console.log('connectWebSocket: Existing socket is already CLOSED. No action needed.');
         }
 
-        // **קריטי:** המתן לוודא שהחיבור הישן נסגר לחלוטין.
-        // נשתמש ב-Promise שממתין ל-onclose, עם טיימר ליתר ביטחון, ונוסיף בדיקה של readyState.
         await new Promise(resolve => {
             let timeoutId;
-            // אם החיבור כבר סגור, אל תחכה
-            if (socketToClose.readyState === WebSocket.CLOSED) {
-                console.log('connectWebSocket: Old socket was already CLOSED. Resolving immediately.');
-                return resolve();
-            }
-
-            // האזן ל-onclose
-            socketToClose.onclose = () => {
-                console.log('connectWebSocket: Old socket confirmed CLOSED via onclose.');
-                clearTimeout(timeoutId);
-                resolve();
-            };
-            // האזן ל-onerror (שגיאה יכולה גם לסגור את החיבור)
-            socketToClose.onerror = (err) => {
-                console.error('connectWebSocket: Error on old socket during close attempt:', err);
-                clearTimeout(timeoutId);
-                resolve(); // למרות השגיאה, ננסה להמשיך
-            };
-            // טיימר גיבוי למקרה ש-onclose/onerror לא נורית
+            if (socketToClose.readyState === WebSocket.CLOSED) { resolve(); return; }
+            socketToClose.onclose = () => { clearTimeout(timeoutId); resolve(); };
+            socketToClose.onerror = (err) => { console.error('connectWebSocket: Error on old socket during close attempt:', err); clearTimeout(timeoutId); resolve(); };
             timeoutId = setTimeout(() => {
                 console.warn('connectWebSocket: Timeout waiting for old socket to close. Checking readyState...');
-                if (socketToClose.readyState !== WebSocket.CLOSED) {
-                    console.error('connectWebSocket: Old socket still not closed after timeout. Forcing terminate.');
-                    socketToClose.terminate(); // נתק בכוח אם עדיין לא סגור
-                }
+                if (socketToClose.readyState !== WebSocket.CLOSED) { socketToClose.terminate(); }
                 resolve();
-            }, 750); // **הגדלתי את זמן ההמתנה ל-750 מילישניות**
+            }, 750);
         });
         console.log('connectWebSocket: Old WebSocket fully processed (closed/terminated). Proceeding to open new one.');
     }
