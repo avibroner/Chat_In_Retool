@@ -1,42 +1,25 @@
 // Global JavaScript - זהו קוד שרץ פעם אחת בטעינת האפליקציה של Retool
 // הוא אחראי לנהל את מחזור החיים של חיבור ה-WebSocket הכללי.
 
-// שמור את ה-chatId האחרון שראינו (כדי לזהות שינויים ב-URL)
-let lastMonitoredChatId = null;
+// שמור את ה-chatId האחרון שראינו ב-localStorage
+let lastMonitoredChatId = localStorage.values.lastMonitoredChatId; 
 
 // פונקציה שתופעל באופן קבוע כדי לבדוק את מצב ה-URL והחיבור
 function monitorUrlAndManageWebSocket() {
-    // קריאת פרמטר 'id' מה-URL הנוכחי
-    const currentChatIdFromUrl = url.searchParams.id;
+    const currentChatIdFromUrl = uurl.searchParams.id;; 
 
-    // קריאת פרטי המשתמש מ-localStorage
     let currentUserData = null;
-    try {
-        const currentUserString = localStorage.getItem('currentUser');
-        if (currentUserString) {
-             currentUserData = {
-               "id": localStorage.values.user_id,
-               "username": localStorage.values.user_name,
-               "phone": localStorage.values.user_phone
-              };
-        }
-    } catch (e) {
-        console.error('Global JS: Error parsing currentUser from localStorage:', e);
-        // אם הנתונים פגומים, ננתק חיבור קיים כדי למנוע בעיות
-        if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
-            window.myGlobalWebSocket.close(1008, 'Corrupt user data');
-            window.myGlobalWebSocket = null;
-        } else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
-             window.myGlobalWebSocket.terminate();
-             window.myGlobalWebSocket = null;
-        }
-        return; // אל תמשיך בלי פרטי משתמש
+    if (localStorage.values.user_id) { 
+        currentUserData = {
+            "id": localStorage.values.user_id,
+            "username": localStorage.values.user_name,
+            "phone": localStorage.values.user_phone
+        };
     }
 
-    // וודא שיש לנו פרטי משתמש תקינים
     if (!currentUserData || !currentUserData.id || !currentUserData.username) {
-        console.warn('Global JS: Current user data (id/username) not available in localStorage. Cannot initiate/manage WebSocket connection.');
-        // אם יש חיבור WebSocket פתוח שקשור למשתמש, סגור אותו כי אין פרטי משתמש.
+        console.warn('Global JS: Current user data (id/username) not available. Cannot initiate/manage WebSocket connection.');
+        // אם יש חיבור קיים ואין פרטי משתמש, סגור אותו
         if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
             window.myGlobalWebSocket.close(1008, 'User data missing');
             window.myGlobalWebSocket = null;
@@ -44,30 +27,51 @@ function monitorUrlAndManageWebSocket() {
              window.myGlobalWebSocket.terminate();
              window.myGlobalWebSocket = null;
         }
-        lastMonitoredChatId = null; // אפס גם את ה-chatId האחרון כי אין יוזר
-        return; // אל תמשיך לנסות לחבר
+        localStorage.setValue('lastMonitoredChatId', null); // אפס גם את ה-chatId האחרון כי אין יוזר
+        return;
     }
 
-    // **לוגיקה חכמה לניהול חיבור ה-WebSocket הראשי:**
-    // 1. אם נמצאים כרגע בעמוד צ'אט (עם ID חוקי ב-URL)
-    if (currentChatIdFromUrl && currentChatIdFromUrl.length > 5) {
-        // טריגר `connectGlobalWebSocket` כדי לוודא חיבור פעיל לצ'אט הזה
-        // ה-connectGlobalWebSocket Query יטפל בסגירת חיבורים קודמים ופתיחת חיבור חדש לצ'אט הנכון
-        connectGlobalWebSocket.trigger({ // **קריאה ל-Query חדש!**
+    // **קריטי: נתוני המטאדאטה של החיבור הפיזי (אם קיים)**
+    const currentGlobalSocketMetadata = window.myGlobalWebSocket ? window.myGlobalWebSocket.metadata : null;
+    const currentGlobalSocketChatId = currentGlobalSocketMetadata ? currentGlobalSocketMetadata.chat_id : null;
+    const currentGlobalSocketUserId = currentGlobalSocketMetadata ? currentGlobalSocketMetadata.userId : null;
+
+    // **לוגיקה חכמה לניהול חיבור ה-WebSocket הראשי (פתיחה/סגירה פיזית):**
+    // 1. אם אין חיבור פיזי, או שהוא לא פתוח, או שהחיבור הפתוח הוא לא עבור היוזר הנוכחי.
+    //    אז נפעיל `connectGlobalWebSocket` ליצירת חיבור חדש עבור היוזר הנוכחי.
+    if (
+        !window.myGlobalWebSocket ||
+        window.myGlobalWebSocket.readyState !== WebSocket.OPEN ||
+        (currentGlobalSocketUserId !== currentUserData.id) // אם החיבור הפתוח הוא עבור יוזר אחר (תרחיש רע)
+    ) {
+        console.log('Global JS: No active WebSocket or not for current user. Triggering connectGlobalWebSocket.');
+        connectGlobalWebSocket.trigger({
             additionalScope: {
-                chat_id_param: currentChatIdFromUrl,
                 user_id_param: currentUserData.id,
                 username_param: currentUserData.username
             }
         });
     } 
-    // 2. אם אין chatId חוקי ב-URL (עזבנו עמוד צ'אט או נמצאים בעמוד כללי)
+    // 2. אם החיבור הפיזי קיים ופתוח, ונמצאים כרגע בעמוד צ'אט (עם ID חוקי ב-URL)
+    else if (currentChatIdFromUrl && currentChatIdFromUrl.length > 5) {
+        // אם ה-chatId השתנה ממה שהחיבור הפיזי קשור אליו, או ממה שמוניטרנו לאחרונה.
+        if (currentChatIdFromUrl !== currentGlobalSocketChatId || currentChatIdFromUrl !== lastMonitoredChatId) {
+            console.log(`Global JS: Detected entry/change to chat page (${currentChatIdFromUrl}). Triggering JOIN_CHAT.`);
+            sendJoinChatToServer.trigger({
+                additionalScope: {
+                    chat_id_param: currentChatIdFromUrl,
+                    user_id_param: currentUserData.id,
+                    username_param: currentUserData.username
+                }
+            });
+        }
+    } 
+    // 3. אם אין chatId חוקי ב-URL (עזבנו עמוד צ'אט או נמצאים בעמוד כללי)
     else {
-        // אם היה לנו chatId קודם (כלומר, עזבנו הרגע עמוד צ'אט)
+        // אם קודם היינו בצ'אט (lastMonitoredChatId קיים)
         if (lastMonitoredChatId && lastMonitoredChatId.length > 5) {
             console.log(`Global JS: Detected departure from chat page (old chat ID: ${lastMonitoredChatId}). Attempting to send LEAVE_CHAT.`);
-            // שלח הודעת LEAVE_CHAT לשרת (מבלי לנתק את החיבור הפיזי)
-            sendLeaveChatToServer.trigger({ // **קריאה ל-Query חדש!**
+            sendLeaveChatToServer.trigger({
                 additionalScope: {
                     chat_id_param: lastMonitoredChatId, // ה-chatId שממנו יצאנו
                     user_id_param: currentUserData.id,
@@ -75,17 +79,13 @@ function monitorUrlAndManageWebSocket() {
                 }
             });
         }
-        // אם יש חיבור WebSocket כללי פעיל (לא לצ'אט ספציפי)
+        // אם אין chat_id נוכחי וגם לא היה chat_id קודם (או שכבר יצאנו מזמן)
+        // ועדיין יש חיבור פיזי פעיל (שלא קשור לצ'אט ספציפי)
         else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
-            console.log("Global JS: No chat ID, and no recent departure. General WebSocket active.");
-            // אין צורך לנתק את החיבור הכללי כאן, ה-Heartbeat בשרת יטפל בו אם לא פעיל.
+            console.log("Global JS: No chat ID. General WebSocket active. Ensuring connection is clean (server Heartbeat will handle).");
+            // אין צורך לנתק את החיבור הפיזי כאן, ה-Heartbeat בשרת יטפל בו אם לא פעיל / לא קשור לצ'אט.
         }
     }
 
-    // עדכון ה-chatId האחרון שנבדק
-    lastMonitoredChatId = currentChatIdFromUrl;
-}
-
-// הפעל את הפונקציה הזו כל כמה זמן (לדוגמה, כל 500 מילישניות)
-// זה יאפשר ל-Retool לזהות שינויים ב-URL גם ללא רענון עמוד מלא.
-monitorUrlAndManageWebSocket();
+    // עדכון ה-chatId האחרון שנבדק ב-localStorage (חשוב!)
+    localStorage.setValue('lastMonitoredChatId', currentChatIdFromUrl);
