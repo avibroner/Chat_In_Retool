@@ -1,0 +1,97 @@
+// connectComponentWebSocket (Retool Query - מופעל מ-index.tsx)
+try {
+    console.log('connectComponentWebSocket Query: Initializing message listeners.');
+
+    const webSocket = window.myGlobalWebSocket; // גישה לחיבור ה-WebSocket הגלובלי
+
+    // נשתמש ב-closure כדי לוודא ש-setMessages ו-setOnlineUsersListRetoolState זמינים.
+    const handleIncomingWebSocketMessage = (event) => {
+       try {
+              console.log('Query: Raw WebSocket message received:', event.data);
+              const newMsg = JSON.parse(event.data);
+              console.log('Query: Parsed WebSocket message:', newMsg);
+
+              // **טיפול ב-CHAT_MESSAGE:**
+              if (newMsg.type === 'CHAT_MESSAGE') {
+                  if (newMsg.sender && newMsg.text && newMsg.timestamp) {
+                      const messageToAdd = {
+                          // comment_id: `temp-${Date.now()}`,
+                          related_to_id: chatComponent1.chatId.value,
+                          comment_text: newMsg.text,
+                          created_by_name: newMsg.sender,
+                          created_by: newMsg.created_by || 'system',
+                          created_at: new Date(newMsg.timestamp).toISOString(),
+                      };
+                      console.log('Query: Message to add to UI:', messageToAdd);
+
+                      const currentMessages = chatComponent1.previousMessages.value;
+                      const existingMessages = Array.isArray(currentMessages) ? currentMessages : [];
+                      const existingTimestamps = new Set(existingMessages.map((msg) => msg.created_at));
+
+                      let updatedMessages;
+                      if (!existingTimestamps.has(messageToAdd.created_at)) {
+                          updatedMessages = [...existingMessages, messageToAdd].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                          console.log('Query: Updated messages array:', updatedMessages);
+                      } else {
+                          updatedMessages = existingMessages;
+                          console.log('Query: Message already exists, skipping update.');
+                      }
+                      previousMessages.setValue(updatedMessages);
+                  }
+                  if (newMsg.onlineUsers && Array.isArray(newMsg.onlineUsers)) {
+                      onlineUsersList.setValue(newMsg.onlineUsers);
+                  }
+              }
+              // **טיפול ב-PRESENCE_UPDATE:**
+              else if (newMsg.type === 'PRESENCE_UPDATE') {
+                  if (newMsg.onlineUsers && Array.isArray(newMsg.onlineUsers)) {
+                      onlineUsersList.setValue(newMsg.onlineUsers);
+                      console.log('Query: Online users updated from PRESENCE_UPDATE:', newMsg.onlineUsers);
+                  }
+                  if (newMsg.eventType && newMsg.affectedUserId) {
+                      console.log('Query: Emitting presence notification event to component.');
+                      if(chatComponent1.userId != newMsg.affectedUserId){
+                    onPresenceUpdate.trigger(
+              {additionalScope: {
+                        type: newMsg.eventType,
+                        userId: newMsg.affectedUserId,                               
+                        userName:newMsg.affectedUserName,
+                        chatId: newMsg.chat_id
+                      }}
+                      );
+                  }
+                }
+              }
+              // **חדש:** טיפול ב-HEARTBEAT_PING מהשרת
+              else if (newMsg.type === 'HEARTBEAT_PING') {
+                  console.log('Client: Received HEARTBEAT_PING, sending HEARTBEAT_PONG.');
+                  // שלח PONG בחזרה עם ה-chat_id הנוכחי של הקומפוננטה
+                  this.send(JSON.stringify({
+                      type: 'HEARTBEAT_PONG',
+                      timestamp: Date.now(),
+                      currentChatIdAtClient: chatComponent1.chatId.value // **קריטי:** שלח את ה-chat_id הנוכחי
+                  }));
+                  return; // טופל, אל תמשיך
+              }
+              else {
+                  console.warn('Query: Unknown WebSocket message type:', newMsg.type, newMsg);
+              }
+          } catch (e) {
+              console.error('Query: Error processing WebSocket message:', e, event.data);
+          }
+      };
+
+    // **קריטי:** הוסף את ה-Event Listener.
+    // חשוב: לוודא שזה לא יוסיף מאזין כפול.
+    // ניתן להסיר מאזין קודם לפני הוספת חדש אם Query רץ מספר פעמים.
+    // אבל מאחר שזה מ-useEffect, אמור לטפל ב-cleanup.
+    webSocket.addEventListener('message', handleIncomingWebSocketMessage);
+
+    // **חשוב:** אם Query זה יופעל מספר פעמים, זה ירשום מאזינים כפולים.
+    // עדיף לוודא שה-listener מוסר לפני שה-Query מופעל שוב,
+    // או שהקומפוננטה עצמה תנהל את הוספה/הסרה של listener.
+    // אבל אם זהו ה-useEffect היחיד שמופעל, הוא יטופל על ידי ה-cleanup.
+
+} catch (error) {
+    console.error('Error in connectComponentWebSocket Query:', error);
+}
