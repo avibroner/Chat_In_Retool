@@ -5,8 +5,7 @@
 let lastMonitoredChatId = localStorage.values.lastMonitoredChatId; 
 
 // פונקציה שתופעל באופן קבוע כדי לבדוק את מצב ה-URL והחיבור
-function monitorUrlAndManageWebSocket() {
-    const currentChatIdFromUrl = uurl.searchParams.id;; 
+    const currentChatIdFromUrl = url.searchParams.id;
 
     let currentUserData = null;
     if (localStorage.values.user_id) { 
@@ -34,7 +33,7 @@ function monitorUrlAndManageWebSocket() {
     // **קריטי: נתוני המטאדאטה של החיבור הפיזי (אם קיים)**
     const currentGlobalSocketMetadata = window.myGlobalWebSocket ? window.myGlobalWebSocket.metadata : null;
     const currentGlobalSocketChatId = currentGlobalSocketMetadata ? currentGlobalSocketMetadata.chat_id : null;
-    const currentGlobalSocketUserId = currentGlobalSocketMetadata ? currentGlobalSocketMetadata.userId : null;
+    const currentGlobalSocketUserId = currentGlobalSocketMetadata ? currentGlobalSocketMetadata.userId.user_id_param : null;
 
     // **לוגיקה חכמה לניהול חיבור ה-WebSocket הראשי (פתיחה/סגירה פיזית):**
     // 1. אם אין חיבור פיזי, או שהוא לא פתוח, או שהחיבור הפתוח הוא לא עבור היוזר הנוכחי.
@@ -57,6 +56,7 @@ function monitorUrlAndManageWebSocket() {
         // אם ה-chatId השתנה ממה שהחיבור הפיזי קשור אליו, או ממה שמוניטרנו לאחרונה.
         if (currentChatIdFromUrl !== currentGlobalSocketChatId || currentChatIdFromUrl !== lastMonitoredChatId) {
             console.log(`Global JS: Detected entry/change to chat page (${currentChatIdFromUrl}). Triggering JOIN_CHAT.`);
+          /*
             sendJoinChatToServer.trigger({
                 additionalScope: {
                     chat_id_param: currentChatIdFromUrl,
@@ -64,6 +64,7 @@ function monitorUrlAndManageWebSocket() {
                     username_param: currentUserData.username
                 }
             });
+        */
         }
     } 
     // 3. אם אין chatId חוקי ב-URL (עזבנו עמוד צ'אט או נמצאים בעמוד כללי)
@@ -71,6 +72,7 @@ function monitorUrlAndManageWebSocket() {
         // אם קודם היינו בצ'אט (lastMonitoredChatId קיים)
         if (lastMonitoredChatId && lastMonitoredChatId.length > 5) {
             console.log(`Global JS: Detected departure from chat page (old chat ID: ${lastMonitoredChatId}). Attempting to send LEAVE_CHAT.`);
+          /*
             sendLeaveChatToServer.trigger({
                 additionalScope: {
                     chat_id_param: lastMonitoredChatId, // ה-chatId שממנו יצאנו
@@ -78,6 +80,7 @@ function monitorUrlAndManageWebSocket() {
                     username_param: currentUserData.username
                 }
             });
+          */
         }
         // אם אין chat_id נוכחי וגם לא היה chat_id קודם (או שכבר יצאנו מזמן)
         // ועדיין יש חיבור פיזי פעיל (שלא קשור לצ'אט ספציפי)
