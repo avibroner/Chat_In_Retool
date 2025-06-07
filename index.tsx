@@ -30,7 +30,7 @@ export const ChatComponent: FC = () => {
   // Event callback for message sent
   const onMessageSent = Retool.useEventCallback({ name: 'messageSent' });
    // **חדש:** Event Callback להודעות Presence (שנקרא מתוך connectWebSocket Query)
-  const onPresenceUpdate = Retool.useEventCallback({ name: 'onPresenceUpdate' });
+   // const onPresenceUpdate = Retool.useEventCallback({ name: 'onPresenceUpdate' }); לא בשימוש כי אני לא רוצה התראה בתוך המערכת למשתמש שהתחבר
 
   // Function to render text with links (ללא שינוי)
   const renderTextWithLinks = (text: string) => {
@@ -41,7 +41,7 @@ export const ChatComponent: FC = () => {
     });
   };
 
-  // Function to format date labels (ללא שינוי)
+  // Function to format date labels
   const formatDateLabel = (date: Date): string => {
     if (!date || isNaN(date.getTime())) return 'לא ידוע';
 
@@ -228,7 +228,7 @@ export const ChatComponent: FC = () => {
       };
   }, [handleWebSocketMessageInComponent]); // תלויות: handleWebSocketMessageInComponent
 */
-
+/*
     // **חדש (קריטי לסגירה נקייה):** ניקוי חיבור WebSocket כאשר הקומפוננטה נעלמת
     // (בדרך כלל כשעוברים עמוד ב-Retool או סוגרים את ה-Modal)
     useEffect(() => {
@@ -268,7 +268,7 @@ export const ChatComponent: FC = () => {
             }
         };
     }, []); // מערך תלויות ריק מבטיח שזה ירוץ רק ב-mount וב-unmount
-
+*/
     
   // Scroll to the bottom when messages update 
   useEffect(() => {
@@ -284,6 +284,13 @@ export const ChatComponent: FC = () => {
   const handleSend = () => {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
+
+    // **קריטי:** וודא שכל הנתונים זמינים לפני שליחה
+        if (!chatId || !username || !userId) {
+            console.error('ChatComponent: Missing essential data for sending message. Aborting.');
+            utils.showNotification({ title: 'שגיאת שליחה', description: 'חסרים נתונים חשובים בהודעה.', variant: 'error' });
+            return;
+        }
 
     const messageData = {
       chat_id: chatId,
