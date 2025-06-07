@@ -1,0 +1,109 @@
+// connectGlobalWebSocket (Retool Query - מופעל מ-Global JavaScript)
+// **קריטי:** קבל את הנתונים מ-additionalScope
+const userId = {user_id_param};
+const username = {username_param};
+// אין כאן chatId, כי זה חיבור גלובלי.
+
+try {
+  console.log('connectGlobalWebSocket Query: Initiating connection attempt.');
+  let reconnectAttempts = 0;
+  const maxReconnectAttempts = 3;
+  const reconnectDelay = 5000;
+
+  // ודא שהמשתמש תקף לפני יצירת חיבור
+  if (!userId || !username) {
+      console.error('connectGlobalWebSocket Query: ERROR - Missing user data. Aborting connection attempt.');
+      if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
+          window.myGlobalWebSocket.terminate();
+          window.myGlobalWebSocket = null;
+      }
+      return;
+  }
+
+  const connect = async () => {
+    // **קריטי:** לפני ניסיון התחברות חדש, סגור ונקו כל חיבור קודם.
+    const currentGlobalSocketMetadata = window.myGlobalWebSocket ? window.myGlobalWebSocket.metadata : null;
+    if (window.myGlobalWebSocket) {
+        console.warn(`connectGlobalWebSocket Query: Found existing WebSocket connection in state ${window.myGlobalWebSocket.readyState}. Attempting aggressive close/terminate.`);
+
+        let socketToClose = window.myGlobalWebSocket;
+        window.myGlobalWebSocket = null;
+
+        if (socketToClose.readyState === WebSocket.OPEN) {
+            socketToClose.close(1000, 'Reconnecting global connection');
+        } else if (socketToClose.readyState === WebSocket.CONNECTING || socketToClose.readyState === WebSocket.CLOSING) {
+            socketToClose.terminate();
+        } else if (socketToClose.readyState === WebSocket.CLOSED) {
+            console.log('connectGlobalWebSocket Query: Existing socket is already CLOSED. No action needed.');
+        }
+
+        await new Promise(resolve => {
+            let timeoutId;
+            if (socketToClose.readyState === WebSocket.CLOSED) { resolve(); return; }
+            socketToClose.onclose = () => { console.log('connectGlobalWebSocket Query: Old socket confirmed CLOSED via onclose.'); clearTimeout(timeoutId); resolve(); };
+            socketToClose.onerror = (err) => { console.error('connectGlobalWebSocket Query: Error on old socket during close attempt:', err); clearTimeout(timeoutId); resolve(); };
+            timeoutId = setTimeout(() => {
+                console.warn('connectGlobalWebSocket Query: Timeout waiting for old socket to close. Checking readyState...');
+                if (socketToClose.readyState !== WebSocket.CLOSED) { console.error('connectGlobalWebSocket Query: Old socket still not closed after timeout. Forcing terminate.'); socketToClose.terminate(); }
+                resolve();
+            }, 750);
+        });
+        console.log('connectGlobalWebSocket Query: Old WebSocket fully processed (closed/terminated). Proceeding to open new one.');
+    }
+
+    const currentSocketInstance = new WebSocket('wss://chat.futureflow.co.il/');
+    console.log('connectGlobalWebSocket Query: WebSocket object created:', currentSocketInstance);
+
+    currentSocketInstance.onopen = function() {
+      console.log('connectGlobalWebSocket Query: WebSocket connection opened!');
+      window.myGlobalWebSocket = this;
+      // **קריטי:** שמור את המטאדאטה של החיבור (user_id, username) על אובייקט ה-WebSocket עצמו
+      // chat_id יהיה null בהתחלה כי זה חיבור גלובלי.
+      window.myGlobalWebSocket.metadata = { chat_id: null, userId: userId, username: username }; 
+      console.log('connectGlobalWebSocket Query: WebSocket instance saved to window.myGlobalWebSocket:', window.myGlobalWebSocket);
+
+      // **לא נשלח JOIN_CHAT/CLIENT_CONNECTED מכאן. Global JS יטפל בזה.**
+      reconnectAttempts = 0;
+
+      // טיפול בהודעות נכנסות (HEARTBEAT_PING, GLOBAL_NOTIFICATION)
+      this.onmessage = (event) => {
+          try {
+              console.log('connectGlobalWebSocket Query: Raw WebSocket message received:', event.data);
+              const newMsg = JSON.parse(event.data);
+              console.log('connectGlobalWebSocket Query: Parsed WebSocket message:', newMsg);
+              // טיפול ב-HEARTBEAT_PING
+               if (newMsg.type === 'HEARTBEAT_PING') {
+                  console.log('connectGlobalWebSocket Query: Received HEARTBEAT_PING, sending HEARTBEAT_PONG.');
+                  const currentChatIdFromGlobalJs = new URLSearchParams(window.location.search).get('id');
+                  this.send(JSON.stringify({
+                      type: 'HEARTBEAT_PONG',
+                      timestamp: Date.now(),
+                      currentChatIdAtClient: currentChatIdFromGlobalJs // שלח את ה-chatId הנוכחי מה-URL
+                  }));
+                  return;
+              }
+              // טיפול ב-GLOBAL_NOTIFICATION
+              else if (newMsg.type === 'GLOBAL_NOTIFICATION') {
+                  console.log('connectGlobalWebSocket Query: Received GLOBAL_NOTIFICATION. Displaying notification.');
+                  utils.showNotification({
+                      title: `הודעה חדשה ב-${newMsg.chat_id_title || 'צ\'אט'}`,
+                      description: `מאת ${newMsg.sender_name}: ${newMsg.message}`,
+                      variant: 'info',
+                      duration: 5000
+                  });
+              }
+              else { console.warn('connectGlobalWebSocket Query: Unknown WebSocket message type:', newMsg.type, newMsg); }
+          } catch (e) { console.error('connectGlobalWebSocket Query: Error processing WebSocket message:', e, event.data); }
+      };
+
+      // **קריטי:** Heartbeat Ping/Pong
+      // אם יש הודעה תלויה מניסיון שליחה קודם
+      if (pendingMessage.value) { /* ... (קוד שליחת pendingMessage) ... */ }
+    };
+
+    currentSocketInstance.onclose = function() { /* ... */ };
+    currentSocketInstance.onerror = function(error) { /* ... */ };
+  };
+
+  await connect();
+} catch (error) { console.error('Error in connectGlobalWebSocket Query:', error); if (window.myGlobalWebSocket) { window.myGlobalWebSocket = null; } }
