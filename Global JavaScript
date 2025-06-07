@@ -5,16 +5,16 @@
 let lastMonitoredChatId = null;
 
 // פונקציה שתופעל באופן קבוע כדי לבדוק את מצב ה-URL והחיבור
-function monitorUrlAndConnectWebSocket() {
+function monitorUrlAndManageWebSocket() {
     // קריאת פרמטר 'id' מה-URL הנוכחי
     const currentChatIdFromUrl = url.searchParams.id;
 
-    // קריאת פרטי המשתמש מ-localStorage (כפי שהתקנת)
+    // קריאת פרטי המשתמש מ-localStorage
     let currentUserData = null;
     try {
-        const currentUserString = localStorage.values.user_id;
+        const currentUserString = localStorage.getItem('currentUser');
         if (currentUserString) {
-            currentUserData = {
+             currentUserData = {
                "id": localStorage.values.user_id,
                "username": localStorage.values.user_name,
                "phone": localStorage.values.user_phone
@@ -26,6 +26,9 @@ function monitorUrlAndConnectWebSocket() {
         if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
             window.myGlobalWebSocket.close(1008, 'Corrupt user data');
             window.myGlobalWebSocket = null;
+        } else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
+             window.myGlobalWebSocket.terminate();
+             window.myGlobalWebSocket = null;
         }
         return; // אל תמשיך בלי פרטי משתמש
     }
@@ -41,57 +44,48 @@ function monitorUrlAndConnectWebSocket() {
              window.myGlobalWebSocket.terminate();
              window.myGlobalWebSocket = null;
         }
+        lastMonitoredChatId = null; // אפס גם את ה-chatId האחרון כי אין יוזר
         return; // אל תמשיך לנסות לחבר
     }
 
-    // קריאה ל-connectWebSocket Query:
-    // נפעיל את Query `connectWebSocket` רק אם:
-    // 1. יש `chatId` חוקי ב-URL ו-`chatId` השתנה, או שאין חיבור בכלל.
-    // 2. או שאין `chatId` ב-URL, אבל היה `chatId` קודם (כלומר, עזבנו עמוד צ'אט), ועדיין יש חיבור.
-    
-    // תרחיש 1: נמצאים כרגע בעמוד צ'אט (עם ID חוקי)
+    // **לוגיקה חכמה לניהול חיבור ה-WebSocket הראשי:**
+    // 1. אם נמצאים כרגע בעמוד צ'אט (עם ID חוקי ב-URL)
     if (currentChatIdFromUrl && currentChatIdFromUrl.length > 5) {
-        // אם ה-chatId השתנה, או שאין חיבור בכלל, או שהחיבור קיים אבל לאותו צ'אט (צריך לוודא שהוא אכן נשאר מחובר)
-        if (
-            currentChatIdFromUrl !== lastMonitoredChatId || // שינוי ל-chatId חדש
-            !window.myGlobalWebSocket || // אין חיבור קיים
-            (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.OPEN) || // החיבור לא פתוח
-            (window.myGlobalWebSocket && window.myGlobalWebSocket.metadata && window.myGlobalWebSocket.metadata.chat_id !== currentChatIdFromUrl) // מחובר אבל לצ'אט אחר
-        ) {
-            console.log(`Global JS: Initiating/Re-initiating WebSocket connection for chat: ${currentChatIdFromUrl}.`);
-            connectWebSocket.trigger({
+        // טריגר `connectGlobalWebSocket` כדי לוודא חיבור פעיל לצ'אט הזה
+        // ה-connectGlobalWebSocket Query יטפל בסגירת חיבורים קודמים ופתיחת חיבור חדש לצ'אט הנכון
+        connectGlobalWebSocket.trigger({ // **קריאה ל-Query חדש!**
+            additionalScope: {
+                chat_id_param: currentChatIdFromUrl,
+                user_id_param: currentUserData.id,
+                username_param: currentUserData.username
+            }
+        });
+    } 
+    // 2. אם אין chatId חוקי ב-URL (עזבנו עמוד צ'אט או נמצאים בעמוד כללי)
+    else {
+        // אם היה לנו chatId קודם (כלומר, עזבנו הרגע עמוד צ'אט)
+        if (lastMonitoredChatId && lastMonitoredChatId.length > 5) {
+            console.log(`Global JS: Detected departure from chat page (old chat ID: ${lastMonitoredChatId}). Attempting to send LEAVE_CHAT.`);
+            // שלח הודעת LEAVE_CHAT לשרת (מבלי לנתק את החיבור הפיזי)
+            sendLeaveChatToServer.trigger({ // **קריאה ל-Query חדש!**
                 additionalScope: {
-                    chat_id_param: currentChatIdFromUrl,
+                    chat_id_param: lastMonitoredChatId, // ה-chatId שממנו יצאנו
                     user_id_param: currentUserData.id,
                     username_param: currentUserData.username
                 }
             });
         }
-    } 
-    // תרחיש 2: עזבנו עמוד צ'אט (ה-chatId מה-URL נעלם או אינו חוקי)
-    else if (!currentChatIdFromUrl && lastMonitoredChatId) { // אם ה-chatId נעלם, אבל קודם היינו בצ'אט
-        console.log(`Global JS: Detected departure from chat page (old chat ID: ${lastMonitoredChatId}).`);
-        // אם החיבור פתוח, ננסה לסגור אותו בצורה נקייה
-        if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
-            window.myGlobalWebSocket.close(1000, 'Left chat page');
-            window.myGlobalWebSocket = null; // נקה את ההפניה
-        } else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState !== WebSocket.CLOSED) {
-             window.myGlobalWebSocket.terminate();
-             window.myGlobalWebSocket = null;
+        // אם יש חיבור WebSocket כללי פעיל (לא לצ'אט ספציפי)
+        else if (window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
+            console.log("Global JS: No chat ID, and no recent departure. General WebSocket active.");
+            // אין צורך לנתק את החיבור הכללי כאן, ה-Heartbeat בשרת יטפל בו אם לא פעיל.
         }
     }
-    // תרחיש 3: נמצאים בעמוד שאינו צ'אט, וגם לא עזבנו הרגע צ'אט, ויש חיבור WebSocket כללי.
-    // במצב זה, נותנים ל-Heartbeat של השרת לנתק אם החיבור לא אקטיבי.
-    // או אם יש חיבור כללי תקוע, ננתק אותו.
-    else if (!currentChatIdFromUrl && !lastMonitoredChatId && window.myGlobalWebSocket && window.myGlobalWebSocket.readyState === WebSocket.OPEN) {
-        console.log("Global JS: No chat ID, and no previous chat ID. General WebSocket active.");
-        // ניתן להוסיף כאן לוגיקה לניתוק חיבורים "כלליים" אם הם לא נכנסים לצ'אט תוך זמן מסוים
-        // כרגע ה-Heartbeat בשרת אמור לטפל בזה.
-    }
-
 
     // עדכון ה-chatId האחרון שנבדק
     lastMonitoredChatId = currentChatIdFromUrl;
 }
 
-monitorUrlAndConnectWebSocket();
+// הפעל את הפונקציה הזו כל כמה זמן (לדוגמה, כל 500 מילישניות)
+// זה יאפשר ל-Retool לזהות שינויים ב-URL גם ללא רענון עמוד מלא.
+monitorUrlAndManageWebSocket();
