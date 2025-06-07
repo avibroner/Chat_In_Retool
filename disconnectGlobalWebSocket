@@ -1,0 +1,18 @@
+// disconnectGlobalWebSocket (Retool Query - מופעל ב-Logout מהאפליקציה הראשית)
+
+const currentSocket = window.myGlobalWebSocket;
+
+if (currentSocket && currentSocket.readyState === WebSocket.OPEN) {
+    console.log('disconnectGlobalWebSocket: Explicitly closing global WebSocket connection on LOGOUT.');
+    currentSocket.close(1000, 'User Logout'); // סגירה נקייה (קוד 1000 = Normal Closure)
+    window.myGlobalWebSocket = null; // נקה את ההפניה הגלובלית ל-WebSocket
+} else if (currentSocket && currentSocket.readyState !== WebSocket.CLOSED) {
+    // אם החיבור קיים אך אינו במצב OPEN (לדוגמה, CONNECTING, CLOSING), ננסה לנתק אותו בכוח.
+    console.warn(`disconnectGlobalWebSocket: Found socket in state ${currentSocket.readyState} on LOGOUT. Terminating.`);
+    currentSocket.terminate(); // terminate כדי לנתק חיבור תקוע
+    window.myGlobalWebSocket = null; // נקה את ההפניה הגלובלית ל-WebSocket
+} else {
+    console.log('disconnectGlobalWebSocket: No active WebSocket to close on LOGOUT.');
+}
+
+// **הערה:** לאחר ביצוע הניתוק, קוד ה-Logout שלך ימשיך כרגיל (לדוגמה, ניווט לדף התחברות).
