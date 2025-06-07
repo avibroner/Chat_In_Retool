@@ -1,7 +1,7 @@
 // connectGlobalWebSocket (Retool Query - מופעל מ-Global JavaScript)
 // **קריטי:** קבל את הנתונים מ-additionalScope
-const userId = {user_id_param};
-const username = {username_param};
+const userId = {user_id_param}.user_id_param;
+const username = {username_param}.username_param;
 // אין כאן chatId, כי זה חיבור גלובלי.
 try{
   console.log(userId);
@@ -75,7 +75,13 @@ try{
     console.log('connectGlobalWebSocket Query: WebSocket instance saved to window.myGlobalWebSocket:', window.myGlobalWebSocket);
 
 
-      // **לא נשלח JOIN_CHAT/CLIENT_CONNECTED מכאן. Global JS יטפל בזה.**
+      this.send(JSON.stringify({
+      created_by: userId,
+      sender_name: username,
+      type: "CLIENT_CONNECTED" // סוג הודעה חדש שהשרת יטפל בו (חיבור גלובלי)
+    }));
+    console.log('connectGlobalWebSocket Query: CLIENT_CONNECTED message sent (no specific chat ID).');
+    
       reconnectAttempts = 0;
 
       // טיפול בהודעות נכנסות (HEARTBEAT_PING, GLOBAL_NOTIFICATION)
