@@ -1,0 +1,28 @@
+// sendLeaveChatToServer (Retool Query - מופעל מהאפליקציה הראשית כשיוצאים מצ'אט)
+const chatId = url.searchParams.id;
+const userId = localStorage.values.user_id;
+const username = localStorage.values.user_name;
+
+const currentSocket = window.myGlobalWebSocket;
+
+// ודא שכל הנתונים זמינים ושהחיבור גלובלי פתוח
+if (!currentSocket || currentSocket.readyState !== WebSocket.OPEN || !chatId || !userId || !username) {
+    console.warn('sendLeaveChatToServer: Cannot send LEAVE_CHAT. WebSocket not open or data missing.', { socket_state: currentSocket ? currentSocket.readyState : 'null', chatId, userId, username });
+    return;
+}
+
+currentSocket.send(JSON.stringify({
+    type: 'LEAVE_CHAT',
+    chat_id: chatId,
+    created_by: userId,
+    sender_name: username,
+    timestamp: new Date().toISOString()
+}));
+console.log(`sendLeaveChatToServer: Sent LEAVE_CHAT message for chat: ${chatId}`);
+
+// **קריטי:** נקה את ה-chat_id מהמטאדאטה של החיבור הגלובלי
+// זה חשוב כדי שהשרת ידע שהחיבור הזה כבר לא קשור לצ'אט ספציפי
+if (currentSocket.metadata) {
+    currentSocket.metadata.chat_id = null;
+    console.log(`sendLeaveChatToServer: Cleared chat_id from global WebSocket metadata.`);
+}
