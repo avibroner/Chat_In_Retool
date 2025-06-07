@@ -45,7 +45,6 @@ wss.on('connection', (ws) => {
             // **טיפול בהודעת PONG מותאמת אישית מהלקוח:**
             if (type === 'HEARTBEAT_PONG') {
                 const metadata = wsMetadata.get(ws);
-                // קבל את ה-chatId האמיתי מהלקוח (יכול להיות null/undefined)
                 const clientChatId = currentChatIdAtClient; 
 
                 if (metadata) {
@@ -53,14 +52,9 @@ wss.on('connection', (ws) => {
                     // נתק אם:
                     // 1. הלקוח מדווח על chat_id שונה ממה שהשרת זוכר (העביר צ'אט).
                     // 2. הלקוח מדווח על NULL/UNDEFINED, אבל השרת זוכר אותו מחובר לצ'אט.
-                    // 3. הלקוח מדווח על NULL/UNDEFINED, וגם השרת זוכר אותו כ-NULL/UNDEFINED,
-                    //    אבל אין לו רישום ב-userToGlobalWsMap (חיבור כללי יתום).
                     if (
                         (clientChatId && metadata.chat_id && clientChatId !== metadata.chat_id) || // עבר לצ'אט אחר
                         (!clientChatId && metadata.chat_id) // אינו בעמוד צ'אט, אבל השרת זוכר אותו מחובר לצ'אט
-                        // אין צורך בתנאי האחרון של '!chatRooms.has(currentChatIdAtClient)'
-                        // כי userToGlobalWsMap.has(metadata.userId) כבר מטפל בחיבורים כלליים
-                        // אם אין metadata.chat_id (היה חיבור כללי), והלקוח שולח פונג עם null, החיבור נשאר פעיל כללי.
                     ) {
                         console.warn(`Server: Heartbeat - Client ${metadata.userId} (from chat ${metadata.chat_id || 'none'}) is now in chat ${clientChatId || 'none'}. Terminating old connection.`);
                         ws.terminate(); // נתק את החיבור
@@ -104,7 +98,7 @@ wss.on('connection', (ws) => {
                         const oldGlobalWs = userToGlobalWsMap.get(created_by);
                         if (oldGlobalWs !== ws) { // אם זה חיבור פיזי שונה
                             console.warn(`Server: CLIENT_CONNECTED - User ${created_by} is already connected globally via another socket. Terminating old global socket.`);
-                            if (oldGlobalWs.readyState === WebSocket.OPEN || oldGlobalWs.readyState === WebSocket.CONNECTING) {
+                            if (oldGlobalWs.readyState === WebSocket.OPEN) {
                                 oldGlobalWs.close(1000, 'New global connection for same user');
                             } else if (oldGlobalWs.readyState !== WebSocket.CLOSED) {
                                 oldGlobalWs.terminate();
@@ -143,6 +137,7 @@ wss.on('connection', (ws) => {
                         ws.terminate(); // נתק חיבור שאינו מזוהה או לא תואם
                         return;
                     }
+                    
                     // **קריטי:** הסרה מכל חדר ישן שהיוזר מחובר אליו (כי הוא עבר חדר)
                     chatRooms.forEach((roomClients, roomChatId) => {
                         if (roomClients.has(created_by) && roomChatId !== chat_id) { // אם היוזר רשום בחדר אחר שאינו החדר הנוכחי
@@ -158,13 +153,17 @@ wss.on('connection', (ws) => {
                     }
 
                     let userJustJoinedChat = false;
-                    if (!chatRooms.get(chat_id).has(created_by)) { // אם לא היה רשום בחדר זה
+                    // **קריטי:** נבדוק אם היוזר כבר בחדר הנוכחי לפני הוספה
+                    if (!chatRooms.get(chat_id).has(created_by)) { 
                         chatRooms.get(chat_id).set(created_by, ws);
                         userJustJoinedChat = true;
+                        console.log(`Server: User ${created_by} joined chat ${chat_id}. Current members: ${chatRooms.get(chat_id).size}`);
                     } else {
-                        console.log(`Server: User ${created_by} already in chat ${chat_id}. Updating metadata.`);
+                        console.log(`Server: User ${created_by} already in chat ${chat_id}. No action needed for chatRooms map.`);
                     }
+                    
                     // **קריטי:** עדכן metadata של ה-ws הנוכחי לטיקט החדש (השרת זוכר מיקומו)
+                    // זה קריטי גם אם ה-userJustJoinedChat הוא false, כי ה-metadata חייב להתעדכן לטיקט הנכון.
                     wsMetadata.set(ws, { chat_id: chat_id, userId: created_by, username: sender_name });
                     userToGlobalWsMap.set(created_by, ws); // ודא שגם המפה הגלובלית מעודכנת לחיבור הנוכחי (למקרה שהיה חיבור ישן).
                     
@@ -185,7 +184,8 @@ wss.on('connection', (ws) => {
                             clientSocket.send(JSON.stringify(joinConfirmationMessage));
                         }
                     });
-                    console.log(`Server: User ${created_by} joined chat ${chat_id}. Current members: ${chatRooms.get(chat_id).size}`);
+                    
+                    console.log(`Server: User ${created_by} current chat updated to ${chat_id}.`);
                     break;
 
                 // **טיפול בשליחת הודעת צ'אט:**
@@ -204,6 +204,7 @@ wss.on('connection', (ws) => {
                         if (!chatRooms.has(chat_id)) chatRooms.set(chat_id, new Map());
                         chatRooms.get(chat_id).set(created_by, ws);
                         wsMetadata.set(ws, { chat_id: chat_id, userId: created_by, username: sender_name });
+                        userToGlobalWsMap.set(created_by, ws); // וודא שגם המפה הגלובלית מעודכנת
                     }
                     ws.lastPong = Date.now(); // איפוס Heartbeat
 
@@ -213,18 +214,23 @@ wss.on('connection', (ws) => {
                     let offline_watchers_for_whatsapp = []; // קבוצה 3
                     let online_watchers_for_global_notification = []; // קבוצה 2
 
-                    ticket_watchers.forEach(watcher => {
-                        if (watcher.user_id === created_by) { // לא לשלוח לשולח ההודעה עצמו
-                            return;
-                        }
-                        if (chatRooms.has(chat_id) && chatRooms.get(chat_id).has(watcher.user_id)) { // מחובר לצ'אט ספציפי (קבוצה 1)
-                            // לא עושים כלום, רואה על המסך
-                        } else if (userToGlobalWsMap.has(watcher.user_id)) { // מחובר למערכת אבל לא לצ'אט (קבוצה 2)
-                            online_watchers_for_global_notification.push(watcher.user_id);
-                        } else { // לא מחובר כלל (קבוצה 3)
-                            offline_watchers_for_whatsapp.push(watcher); // נשלח את כל אובייקט הוואצ'ר
-                        }
-                    });
+                    if (Array.isArray(ticket_watchers)) { // ודא ש-ticket_watchers הוא מערך
+                        ticket_watchers.forEach(watcher => {
+                            if (watcher.user_id === created_by) { // לא לשלוח לשולח ההודעה עצמו
+                                return;
+                            }
+                            if (chatRooms.has(chat_id) && chatRooms.get(chat_id).has(watcher.user_id)) { // מחובר לצ'אט ספציפי (קבוצה 1)
+                                // לא עושים כלום, רואה על המסך
+                            } else if (userToGlobalWsMap.has(watcher.user_id)) { // מחובר למערכת אבל לא לצ'אט (קבוצה 2)
+                                online_watchers_for_global_notification.push(watcher.user_id);
+                            } else { // לא מחובר כלל (קבוצה 3)
+                                offline_watchers_for_whatsapp.push(watcher); // נשלח את כל אובייקט הוואצ'ר
+                            }
+                        });
+                    } else {
+                        console.warn('Server: ticket_watchers is not an array for CHAT_MESSAGE.');
+                    }
+
 
                     // **שליחה ל-n8n (רק אם יש מישהו לא מחובר):**
                     if (offline_watchers_for_whatsapp.length > 0) {
@@ -271,7 +277,7 @@ wss.on('connection', (ws) => {
                             client.send(JSON.stringify(broadcastMessage));
                         }
                     });
-                    console.log(`Server: Message from ${sender_name} in ${chat_id} broadcasted.`); // n8n כבר טופל קודם
+                    console.log(`Server: Message from ${sender_name} in ${chat_id} broadcasted.`);
                     break;
 
                 // **טיפול בעזיבת צ'אט ספציפי:**
@@ -284,39 +290,45 @@ wss.on('connection', (ws) => {
                     }
 
                     const leavingUserMetadata = wsMetadata.get(ws);
-                    if (leavingUserMetadata && leavingUserMetadata.userId === created_by && leavingUserMetadata.chat_id === chat_id) {
-                        // הסרה מהחדר
-                        if (chatRooms.has(chat_id)) {
-                            chatRooms.get(chat_id).delete(created_by);
-                            console.log(`Server: User ${created_by} explicitly left chat ${chat_id}. Remaining members: ${chatRooms.get(chat_id).size}.`);
+                    // **קריטי:** וודא שהבקשה מגיעה מהחיבור הנכון ושהמשתמש רשום בחדר
+                    if (!leavingUserMetadata || leavingUserMetadata.userId !== created_by) {
+                        console.warn(`Server: LEAVE_CHAT request from non-matching user/socket. Ignoring. Request from ${created_by}, actual socket user ${leavingUserMetadata ? leavingUserMetadata.userId : 'unknown'}.`);
+                        ws.send(JSON.stringify({ error: 'LEAVE_CHAT request ignored: user/socket mismatch' }));
+                        return;
+                    }
+                    
+                    // **קריטי:** בצע ניקוי מ-chatRooms רק אם היוזר נמצא שם (השרת עשוי כבר לנקות)
+                    if (chatRooms.has(chat_id) && chatRooms.get(chat_id).has(created_by)) {
+                        chatRooms.get(chat_id).delete(created_by);
+                        console.log(`Server: User ${created_by} explicitly left chat ${chat_id}. Remaining members: ${chatRooms.get(chat_id).size}.`);
 
-                            // עדכן את רשימת המחוברים ושלח PRESENCE_UPDATE
-                            const currentUsersAfterLeave = getConnectedUsersInChat(chat_id);
-                            const leaveNotificationMessage = {
-                                type: 'PRESENCE_UPDATE',
-                                chat_id: chat_id,
-                                onlineUsers: currentUsersAfterLeave,
-                                timestamp: new Date().toISOString(),
-                                eventType: 'user_left',
-                                affectedUserId: created_by,
-                                affectedUserName: sender_name
-                            };
+                        const currentUsersAfterLeave = getConnectedUsersInChat(chat_id);
+                        const leaveNotificationMessage = {
+                            type: 'PRESENCE_UPDATE',
+                            chat_id: chat_id,
+                            onlineUsers: currentUsersAfterLeave,
+                            timestamp: new Date().toISOString(),
+                            eventType: 'user_left',
+                            affectedUserId: created_by,
+                            affectedUserName: sender_name
+                        };
 
-                            chatRooms.get(chat_id).forEach((clientSocket) => {
-                                if (clientSocket.readyState === WebSocket.OPEN) {
-                                    clientSocket.send(JSON.stringify(leaveNotificationMessage));
-                                }
-                            });
-
-                            if (chatRooms.get(chat_id).size === 0) {
-                                chatRooms.delete(chat_id);
+                        chatRooms.get(chat_id).forEach((clientSocket) => {
+                            if (clientSocket.readyState === WebSocket.OPEN) {
+                                clientSocket.send(JSON.stringify(leaveNotificationMessage));
                             }
-                        } else {
-                            console.warn(`Server: LEAVE_CHAT request for user ${created_by} from chat ${chat_id}, but user not found in chatRooms.`);
+                        });
+
+                        if (chatRooms.get(chat_id).size === 0) {
+                            chatRooms.delete(chat_id);
                         }
                     } else {
-                        console.warn(`Server: LEAVE_CHAT request for ${created_by} from ${chat_id} received, but connection metadata does not match.`);
+                        console.warn(`Server: LEAVE_CHAT request for user ${created_by} from chat ${chat_id}, but user not found in chatRooms (might be already left/not in this chat).`);
                     }
+                    // **קריטי:** עדכן את ה-chat_id במטאדאטה של החיבור ל-null, כי הוא עזב את הצ'אט
+                    // זה קריטי כדי שה-Heartbeat ו-JOIN_CHAT חדש ידעו שהוא כבר לא בטיקט זה.
+                    leavingUserMetadata.chat_id = null;
+                    console.log(`Server: Updated socket metadata for user ${created_by} to chat_id: null.`);
                     break;
 
                 default:
@@ -333,7 +345,7 @@ wss.on('connection', (ws) => {
     ws.on('close', (code, reason) => {
         console.log(`Server: Client disconnected with code ${code} and reason: ${reason}`);
         const closedSocketMetadata = wsMetadata.get(ws);
-        wsMetadata.delete(ws);
+        wsMetadata.delete(ws); 
 
         // **קריטי:** הסר את היוזר מ-userToGlobalWsMap
         if (closedSocketMetadata && userToGlobalWsMap.get(closedSocketMetadata.userId) === ws) {
@@ -341,7 +353,8 @@ wss.on('connection', (ws) => {
             console.log(`Server: User ${closedSocketMetadata.userId} removed from userToGlobalWsMap on close.`);
         }
 
-        if (closedSocketMetadata && closedSocketMetadata.chat_id && chatRooms.has(closedSocketMetadata.chat_id)) { // ודא שיש לו metadata ושהוא היה בחדר
+        // **קריטי:** נקה את הלקוח מ-chatRooms אם הוא היה רשום שם
+        if (closedSocketMetadata && closedSocketMetadata.chat_id && chatRooms.has(closedSocketMetadata.chat_id)) {
             const { chat_id, userId, username } = closedSocketMetadata;
             chatRooms.get(chat_id).delete(userId);
             
