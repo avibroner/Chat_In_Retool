@@ -95,14 +95,34 @@ try {
               else { console.warn('connectGlobalWebSocket Query: Unknown WebSocket message type:', newMsg.type, newMsg); }
           } catch (e) { console.error('connectGlobalWebSocket Query: Error processing WebSocket message:', e, event.data); }
       };
-
-      // **קריטי:** Heartbeat Ping/Pong
-      // אם יש הודעה תלויה מניסיון שליחה קודם
-      if (pendingMessage.value) { /* ... (קוד שליחת pendingMessage) ... */ }
     };
 
-    currentSocketInstance.onclose = function() { /* ... */ };
-    currentSocketInstance.onerror = function(error) { /* ... */ };
+    currentSocketInstance.onclose = function() {
+      console.log('WebSocket connection closed!');
+      if (window.myGlobalWebSocket === this) {
+          window.myGlobalWebSocket = null;
+          console.log('window.myGlobalWebSocket set to null on close.');
+      } else {
+          console.log('Another WebSocket instance closed, not the current global one.');
+      }
+      if (reconnectAttempts < maxReconnectAttempts) {
+        reconnectAttempts++;
+        console.log(`Attempting to reconnect (${reconnectAttempts}/${maxReconnectAttempts})...`);
+        setTimeout(connect, reconnectDelay);
+      } else {
+        console.error('Max reconnect attempts reached. Giving up.');
+      }
+    };
+    
+    currentSocketInstance.onerror = function(error) {
+      console.error('WebSocket error occurred:', error);
+      if (window.myGlobalWebSocket === this) {
+          window.myGlobalWebSocket = null;
+      } else {
+          console.log('Another WebSocket instance had an error, not the current global one.');
+      }
+      console.log('webSocketInstance value set to null on error.');
+    };
   };
 
   await connect();
