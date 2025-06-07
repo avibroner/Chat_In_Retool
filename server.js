@@ -37,7 +37,7 @@ wss.on('connection', (ws) => {
     ws.lastPong = Date.now(); // איפוס טיימר Heartbeat
 
     ws.on('message', (data) => {
-        console.log('Server: Raw message received:', data);
+        
         try {
             const message = JSON.parse(data);
             const { type, chat_id, created_by, sender_name, message: text, ticket_watchers, currentChatIdAtClient } = message;
