@@ -265,6 +265,7 @@ wss.on('connection', (ws) => {
                     // **שידור ההודעה לכל המחוברים לצ'אט:**
                     const broadcastMessage = {
                         type: 'CHAT_MESSAGE',
+                        chat_id: chat_id,
                         sender: sender_name,
                         text,
                         timestamp: new Date().toISOString(),
