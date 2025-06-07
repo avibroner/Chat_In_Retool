@@ -16,7 +16,7 @@ try {
                   if (newMsg.sender && newMsg.text && newMsg.timestamp) {
                       const messageToAdd = {
                           // comment_id: `temp-${Date.now()}`,
-                          related_to_id: chatComponent1.chatId.value,
+                          related_to_id: newMsg.chat_id,
                           comment_text: newMsg.text,
                           created_by_name: newMsg.sender,
                           created_by: newMsg.created_by || 'system',
@@ -32,6 +32,10 @@ try {
                       if (!existingTimestamps.has(messageToAdd.created_at)) {
                           updatedMessages = [...existingMessages, messageToAdd].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
                           console.log('Query: Updated messages array:', updatedMessages);
+                        
+                        // **קריטי:** טריגר Query לשמירה ב-BigQuery
+                        saveMessageToBigQueryJS.trigger({ additionalScope: { message_data: messageToAdd } });
+                        console.log('connectWebSocket Query: Triggered saveMessageToBigQuery for new CHAT_MESSAGE.');
                       } else {
                           updatedMessages = existingMessages;
                           console.log('Query: Message already exists, skipping update.');
@@ -51,6 +55,8 @@ try {
                   if (newMsg.eventType && newMsg.affectedUserId) {
                       console.log('Query: Emitting presence notification event to component.');
                       if(chatComponent1.userId != newMsg.affectedUserId){
+                    /*
+                    מטריג הודעה קופצת שמישהו התחבר לטיקט
                     onPresenceUpdate.trigger(
               {additionalScope: {
                         type: newMsg.eventType,
@@ -59,19 +65,9 @@ try {
                         chatId: newMsg.chat_id
                       }}
                       );
+                        */
                   }
                 }
-              }
-              // **חדש:** טיפול ב-HEARTBEAT_PING מהשרת
-              else if (newMsg.type === 'HEARTBEAT_PING') {
-                  console.log('Client: Received HEARTBEAT_PING, sending HEARTBEAT_PONG.');
-                  // שלח PONG בחזרה עם ה-chat_id הנוכחי של הקומפוננטה
-                  this.send(JSON.stringify({
-                      type: 'HEARTBEAT_PONG',
-                      timestamp: Date.now(),
-                      currentChatIdAtClient: chatComponent1.chatId.value // **קריטי:** שלח את ה-chat_id הנוכחי
-                  }));
-                  return; // טופל, אל תמשיך
               }
               else {
                   console.warn('Query: Unknown WebSocket message type:', newMsg.type, newMsg);
