@@ -30,7 +30,7 @@ const sendToN8nForProcessing = async (messageData) => {
 
 // **חדש:** הגדרות Heartbeat
 const HEARTBEAT_INTERVAL = 30 * 1000; // 30 שניות
-const HEARTBEAT_TIMEOUT = 10 * 1000; // 10 שניות (זמן המתנה לפונג)
+const HEARTBEAT_TIMEOUT = 20 * 1000; // 10 שניות (זמן המתנה לפונג)
 
 wss.on('connection', (ws) => {
     console.log('Server: Client connected');
