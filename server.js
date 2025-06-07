@@ -79,7 +79,7 @@ wss.on('connection', (ws) => {
             console.log('Server: User Name:', sender_name);
 
             if (!type) {
-                console.error('Server: Error - Message type is missing!');
+                console.log('Server: Error - Message type is missing!');
                 ws.send(JSON.stringify({ error: 'Message type is required' }));
                 return;
             }
