@@ -352,3 +352,44 @@ sendLeaveChatToServer (Query חדש): ישלח הודעת LEAVE_CHAT לשרת.
 saveMessageToBigQuery (Query חדש): ישמור הודעות ב-BigQuery.
 disconnectGlobalWebSocket (Query חדש): יטפל בניקוי חיבור ה-WebSocket בעת Logout.
 קומפוננטת הצ'אט (index.tsx): תעודכן כדי לא לנהל חיבורים, אלא רק לקבל עדכונים ולהפעיל Queries.
+
+
+-----------------------------------------------------
+
+תכנון מחודש וסופי של הקודים ב-Retool:
+א. Global JavaScript (חדש/מתוקן):
+
+מטרה: ליצור ולנהל את חיבור ה-WebSocket הפיזי הגלובלי. לשלוח PING, לטפל ב-PONG, ולסגור חיבורים תקועים.
+מקום: App Settings -> Advanced -> Global JavaScript.
+ב. connectGlobalWebSocket (Query חדש):
+
+מטרה: ליצור חיבור WebSocket פיזי, לשמור אותו ב-window.myGlobalWebSocket, ולשלוח JOIN_CHAT לטיקט הנכון.
+מקום: JavaScript Query (יופעל מ-Global JavaScript).
+ג. sendMessageToWebSocket (Query קיים, ישופר):
+
+מטרה: לשלוח הודעות צ'אט לשרת.
+מקום: JavaScript Query (יופעל מקומפוננטת הצ'אט).
+ד. sendJoinChatToServer (Query חדש):
+
+מטרה: לשלוח הודעת JOIN_CHAT לשרת (לאחר שחיבור גלובלי כבר קיים).
+מקום: JavaScript Query (יופעל מהאפליקציה הראשית בעת כניסה לעמוד צ'אט).
+ה. sendLeaveChatToServer (Query חדש):
+
+מטרה: לשלוח הודעת LEAVE_CHAT לשרת.
+מקום: JavaScript Query (יופעל מהאפליקציה הראשית בעת יציאה מעמוד צ'אט).
+ו. saveMessageToBigQuery (Query קיים/חדש):
+
+מטרה: לתעד הודעות ב-BigQuery.
+מקום: BigQuery Query (יופעל מקומפוננטת הצ'אט).
+ז. disconnectGlobalWebSocket (Query קיים/חדש):
+
+מטרה: לנתק את חיבור ה-WebSocket הפיזי הגלובלי (בלוגאאוט).
+מקום: JavaScript Query (יופעל מהאפליקציה הראשית בעת Logout).
+ח. קומפוננטת הצ'אט (index.tsx):
+
+מטרה: להציג את הצ'אט, לאסוף קלט, להאזין ל-window.myGlobalWebSocket לקבלת הודעות, ולטריגר Queries.
+מקום: Custom Component.
+ט. שרת ה-WebSocket (server.js):
+
+מטרה: לטפל בכל סוגי ההודעות, לנהל userToGlobalWsMap (חיבור גלובלי), chatRooms (חיבור לצ'אט ספציפי), ולנתב התראות.
+מקום: DigitalOcean.
