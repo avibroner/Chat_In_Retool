@@ -18,7 +18,7 @@ export const ChatComponent: FC = () => {
   // Retool state for new message
   const [newMessage, setNewMessage] = Retool.useStateObject({
     name: 'newMessage',
-    initialValue: { chat_id: '', sender_name: '', message: '', userId: '' , type: 'CHAT_MESSAGE', ticket_watchers: [] },
+    initialValue: { chat_id: '', sender_name: '', message: '', userId: '' , type: 'CHAT_MESSAGE', ticket_watchers: [],related_to_type: '', related_to_name: '', created_by_user_type: ''},
     inspector: 'text',
     label: 'New Message',
   });
