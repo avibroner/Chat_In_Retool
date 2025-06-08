@@ -40,7 +40,7 @@ wss.on('connection', (ws) => {
         
         try {
             const message = JSON.parse(data);
-            const { type, chat_id, created_by, sender_name, message: text, ticket_watchers, currentChatIdAtClient } = message;
+             const { type, chat_id, created_by, sender_name, message: text, ticket_watchers, currentChatIdAtClient, related_to_type, related_to_name, created_by_user_type } = message;
 
             // **טיפול בהודעת PONG מותאמת אישית מהלקוח:**
             if (type === 'HEARTBEAT_PONG') {
@@ -251,7 +251,8 @@ wss.on('connection', (ws) => {
                         sender_name: sender_name,
                         message: text,
                         timestamp: new Date().toISOString(),
-                        chat_id_title: chat_id // ניתן להוסיף שם של צ'אט אם זמין
+                        related_to_type: related_to_type,
+                        related_to_name: related_to_name
                     };
                     online_watchers_for_global_notification.forEach(user_id => {
                         const clientWs = userToGlobalWsMap.get(user_id);
