@@ -39,8 +39,8 @@ let lastMonitoredChatId = localStorage.values.lastMonitoredChatId;
     // 1. אם אין חיבור פיזי, או שהוא לא פתוח, או שהחיבור הפתוח הוא לא עבור היוזר הנוכחי.
     //    אז נפעיל `connectGlobalWebSocket` ליצירת חיבור חדש עבור היוזר הנוכחי.
     const isConnectionInvalidOrMissing = (
-        !currentGlobalSocket || // אין אובייקט סוקט בכלל
-        currentGlobalSocket.readyState !== WebSocket.OPEN || // הסוקט לא פתוח (נסגר, מתחבר, או שגיאה)
+        !currentGlobalSocketMetadata || // אין אובייקט סוקט בכלל
+        currentGlobalSocketMetadata.readyState !== WebSocket.OPEN || // הסוקט לא פתוח (נסגר, מתחבר, או שגיאה)
         !currentGlobalSocketMetadata || // אין metadata על הסוקט (הוא לא הוכן כמו שצריך)
         (currentGlobalSocketUserId !== currentUserData.id) // הסוקט הפתוח הוא עבור יוזר אחר
     );
