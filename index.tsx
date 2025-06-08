@@ -7,6 +7,9 @@ export const ChatComponent: FC = () => {
   const [username] = Retool.useStateString({ name: 'username', initialValue: '', inspector: 'text' });
   const [userId] = Retool.useStateString({ name: 'userId', initialValue: '', inspector: 'text' });
   const [chatId] = Retool.useStateString({ name: 'chatId', initialValue: '', inspector: 'text' });
+  const [relatedToType] = Retool.useStateString({ name: 'relatedToType', initialValue: '', inspector: 'text' });
+  const [relatedToName] = Retool.useStateString({ name: 'relatedToName', initialValue: '', inspector: 'text' });
+  const [createdByUsertype] = Retool.useStateString({ name: 'createdByUsertype', initialValue: '', inspector: 'text' });
   const [previousMessages, setPreviousMessages] = Retool.useStateArray({ name: 'previousMessages', initialValue: [] });
   const [ticketWatchers] = Retool.useStateArray({ name: 'ticketWatchers', initialValue: [], label: 'ticket watchers' });
   const [onlineUsersList, setOnlineUsersList] = useState<string[]>([]);
@@ -298,7 +301,10 @@ export const ChatComponent: FC = () => {
       message: trimmed,
       created_by: userId,
       ticket_watchers: ticketWatchers, 
-      type: "CHAT_MESSAGE" 
+      type: "CHAT_MESSAGE",
+      related_to_type: relatedToType,
+      related_to_name: relatedToName,
+      created_by_user_type: createdByUsertype
     };
     
     console.log('Component: Sending message data:', messageData); 
