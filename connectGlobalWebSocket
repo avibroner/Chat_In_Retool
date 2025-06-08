@@ -93,7 +93,7 @@ try{
               // טיפול ב-HEARTBEAT_PING
                if (newMsg.type === 'HEARTBEAT_PING') {
                   console.log('connectGlobalWebSocket Query: Received HEARTBEAT_PING, sending HEARTBEAT_PONG.');
-                  const currentChatIdFromGlobalJs = new URLSearchParams(window.location.search).get('id');
+                  const currentChatIdFromGlobalJs = url.searchParams.id;
                   this.send(JSON.stringify({
                       type: 'HEARTBEAT_PONG',
                       timestamp: Date.now(),
@@ -105,10 +105,10 @@ try{
               else if (newMsg.type === 'GLOBAL_NOTIFICATION') {
                   console.log('connectGlobalWebSocket Query: Received GLOBAL_NOTIFICATION. Displaying notification.');
                   utils.showNotification({
-                      title: `הודעה חדשה ב-${newMsg.chat_id_title || 'צ\'אט'}`,
+                      title: `הודעה חדשה ב-${newMsg.related_to_name  || 'צ\'אט'}`,
                       description: `מאת ${newMsg.sender_name}: ${newMsg.message}`,
                       variant: 'info',
-                      duration: 5000
+                      duration: 5
                   });
               }
               else { console.warn('connectGlobalWebSocket Query: Unknown WebSocket message type:', newMsg.type, newMsg); }
