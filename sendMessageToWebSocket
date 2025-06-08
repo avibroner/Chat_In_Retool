@@ -26,9 +26,9 @@ const messageDataToSend = {
     created_by: chatComponent1.userId, // שולח את ה-User ID בשדה created_by
     type: "CHAT_MESSAGE",
     ticket_watchers: chatComponent1.ticketWatchers, // שולח את מערך הצופים
-    related_to_type: chatComponent1.related_to_type,
-    related_to_name: chatComponent1.related_to_name,
-    created_by_user_type: chatComponent1.created_by_user_type
+    related_to_type: chatComponent1.newMessage.related_to_type,
+    related_to_name: chatComponent1.newMessage.related_to_name,
+    created_by_user_type: chatComponent1.newMessage.created_by_user_type
 };
 
 // נסה לשלוח את ההודעה דרך חיבור ה-WebSocket הקיים
