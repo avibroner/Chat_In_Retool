@@ -271,7 +271,10 @@ wss.on('connection', (ws) => {
                         text,
                         timestamp: new Date().toISOString(),
                         created_by: created_by,
-                        onlineUsers: currentOnlineUsers
+                        onlineUsers: currentOnlineUsers,
+                        related_to_type: related_to_type,
+                        related_to_name: related_to_name,
+                        created_by_user_type: created_by_user_type
                     };
 
                     chatRooms.get(chat_id).forEach((client) => {
