@@ -37,7 +37,7 @@ wss.on('connection', (ws) => {
     ws.lastPong = Date.now(); // איפוס טיימר Heartbeat
 
     ws.on('message', (data) => {
-        
+        ws.lastPong = Date.now();
         try {
             const message = JSON.parse(data);
              const { type, chat_id, created_by, sender_name, message: text, ticket_watchers, currentChatIdAtClient, related_to_type, related_to_name, created_by_user_type } = message;
@@ -45,20 +45,45 @@ wss.on('connection', (ws) => {
             // **טיפול בהודעת PONG מותאמת אישית מהלקוח:**
             if (type === 'HEARTBEAT_PONG') {
                 const metadata = wsMetadata.get(ws);
-                const clientChatId = currentChatIdAtClient; 
+                const clientChatId = currentChatIdAtClient || null; 
 
                 if (metadata) {
-                    // **קריטי:** תנאי מורכב לניתוק ב-PONG:
+                    // **קריטי (תיקון):** לוגיקת ניתוק *לוגי* מצ'אט ספציפי ב-PONG
                     // נתק אם:
-                    // 1. הלקוח מדווח על chat_id שונה ממה שהשרת זוכר (העביר צ'אט).
-                    // 2. הלקוח מדווח על NULL/UNDEFINED, אבל השרת זוכר אותו מחובר לצ'אט.
+                    // 1. הלקוח מדווח על chat_id שונה ממה שהשרת זוכר, וגם השרת זוכר אותו בצ'אט ספציפי.
+                    // 2. הלקוח מדווח על NULL/UNDEFINED, אבל השרת זוכר אותו מחובר לצ'אט ספציפי.
                     if (
-                        (clientChatId && metadata.chat_id && clientChatId !== metadata.chat_id) || // עבר לצ'אט אחר
-                        (!clientChatId && metadata.chat_id) // אינו בעמוד צ'אט, אבל השרת זוכר אותו מחובר לצ'אט
+                        (clientChatId !== metadata.chat_id && metadata.chat_id !== null) || // עבר לצ'אט אחר
+                        (clientChatId === null && metadata.chat_id !== null) // אינו בעמוד צ'אט, אבל השרת זוכר אותו מחובר לצ'אט
                     ) {
-                        console.warn(`Server: Heartbeat - Client ${metadata.userId} (from chat ${metadata.chat_id || 'none'}) is now in chat ${clientChatId || 'none'}. Terminating old connection.`);
-                        ws.terminate(); // נתק את החיבור
-                        return; // סיים טיפול בהודעה זו
+                        console.warn(`Server: Heartbeat - Client ${metadata.userId} (from chat ${metadata.chat_id || 'none'}) is now in chat ${clientChatId || 'none'}. Removing from chatRooms only.`);
+                        // **קריטי:** בצע ניקוי לוגיקה של LEAVE_CHAT כאן, מבלי לנתק את החיבור הפיזי
+                        // רק הסר מהחדר ושלח PRESENCE_UPDATE
+                        if (chatRooms.has(metadata.chat_id) && chatRooms.get(metadata.chat_id).has(metadata.userId)) {
+                            chatRooms.get(metadata.chat_id).delete(metadata.userId);
+                            if (chatRooms.get(metadata.chat_id).size === 0) chatRooms.delete(metadata.chat_id);
+                            console.log(`Server: User ${metadata.userId} explicitly left chat ${metadata.chat_id}. (Via Heartbeat - PONG mismatch).`);
+
+                            // עדכן את ה-chat_id במטאדאטה של החיבור ל-null, כי הוא עזב את הצ'אט
+                            metadata.chat_id = null; // **קריטי: עדכון metadata**
+
+                            const currentUsersAfterLeave = getConnectedUsersInChat(metadata.chat_id);
+                            const leaveNotificationMessage = {
+                                type: 'PRESENCE_UPDATE',
+                                chat_id: metadata.chat_id, // ה-chat_id שממנו יצא
+                                onlineUsers: currentUsersAfterLeave,
+                                timestamp: new Date().toISOString(),
+                                eventType: 'user_left',
+                                affectedUserId: metadata.userId,
+                                affectedUserName: metadata.username
+                            };
+
+                            chatRooms.get(metadata.chat_id).forEach((clientSocket) => {
+                                if (clientSocket.readyState === WebSocket.OPEN) {
+                                    clientSocket.send(JSON.stringify(leaveNotificationMessage));
+                                }
+                            });
+                        }
                     }
                     ws.lastPong = Date.now(); // עדכן את זמן הפונג האחרון
                     console.log(`Server: Heartbeat - Received PONG from client ${metadata.username || metadata.userId} (Server Chat: ${metadata.chat_id || 'none'}). Client reported Chat: ${clientChatId || 'none'}.`);
@@ -66,13 +91,12 @@ wss.on('connection', (ws) => {
                     // אם PONG מגיע מלקוח לא מזוהה (ללא metadata)
                     console.log('Server: Heartbeat - Received PONG from unknown client (no metadata). Terminating connection.');
                     if (ws.readyState === WebSocket.OPEN) {
-                         ws.terminate();
+                         ws.terminate(); // נתק חיבור פיזי רק אם הוא לא מזוהה
                          return;
                     }
                 }
                 return; // טופל, אל תמשיך ל-switch case
             }
-
             console.log('Server: Message type:', type);
             console.log('Server: Chat ID:', chat_id);
             console.log('Server: User ID:', created_by);
