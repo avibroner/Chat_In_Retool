@@ -1,0 +1,97 @@
+// connectComponentWebSocket (Retool Query - מופעל מ-index.tsx)
+try {
+    console.log('connectComponentWebSocket Query: Initializing message listeners.');
+
+    const webSocket = window.myGlobalWebSocket; // גישה לחיבור ה-WebSocket הגלובלי
+
+    // נשתמש ב-closure כדי לוודא ש-setMessages ו-setOnlineUsersListRetoolState זמינים.
+    const handleIncomingWebSocketMessage = (event) => {
+       try {
+              console.log('Query: Raw WebSocket message received:', event.data);
+              const newMsg = JSON.parse(event.data);
+              console.log('Query: Parsed WebSocket message:', newMsg);
+
+              // **טיפול ב-CHAT_MESSAGE:**
+              if (newMsg.type === 'CHAT_MESSAGE') {
+                  if (newMsg.sender && newMsg.text && newMsg.timestamp) {
+                      const messageToAdd = {
+                          // comment_id: `temp-${Date.now()}`,
+                          related_to_id: newMsg.chat_id,
+                          comment_text: newMsg.text,
+                          created_by_name: newMsg.sender,
+                          created_by: newMsg.created_by || 'system',
+                          created_at: new Date(newMsg.timestamp).toISOString(),
+                          related_to_type: newMsg.related_to_type,
+                          related_to_name: newMsg.related_to_name,
+                          created_by_user_type: newMsg.created_by_user_type
+                        
+                      };
+                      console.log('Query: Message to add to UI:', messageToAdd);
+
+                      const currentMessages = chatComponent1.previousMessages.value;
+                      const existingMessages = Array.isArray(currentMessages) ? currentMessages : [];
+                      const existingTimestamps = new Set(existingMessages.map((msg) => msg.created_at));
+
+                      let updatedMessages;
+                      if (!existingTimestamps.has(messageToAdd.created_at)) {
+                          updatedMessages = [...existingMessages, messageToAdd].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+                          console.log('Query: Updated messages array:', updatedMessages);
+                        
+                        // **קריטי:** טריגר Query לשמירה ב-BigQuery
+                        saveMessageToBigQueryJS.trigger({ additionalScope: { message_data: messageToAdd } });
+                        console.log('connectWebSocket Query: Triggered saveMessageToBigQuery for new CHAT_MESSAGE.');
+                      } else {
+                          updatedMessages = existingMessages;
+                          console.log('Query: Message already exists, skipping update.');
+                      }
+                      previousMessages.setValue(updatedMessages);
+                  }
+                  if (newMsg.onlineUsers && Array.isArray(newMsg.onlineUsers)) {
+                      onlineUsersList.setValue(newMsg.onlineUsers);
+                  }
+              }
+              // **טיפול ב-PRESENCE_UPDATE:**
+              else if (newMsg.type === 'PRESENCE_UPDATE') {
+                  if (newMsg.onlineUsers && Array.isArray(newMsg.onlineUsers)) {
+                      onlineUsersList.setValue(newMsg.onlineUsers);
+                      console.log('Query: Online users updated from PRESENCE_UPDATE:', newMsg.onlineUsers);
+                  }
+                  if (newMsg.eventType && newMsg.affectedUserId) {
+                      console.log('Query: Emitting presence notification event to component.');
+                      if(chatComponent1.userId != newMsg.affectedUserId){
+                    /*
+                    מטריג הודעה קופצת שמישהו התחבר לטיקט
+                    onPresenceUpdate.trigger(
+              {additionalScope: {
+                        type: newMsg.eventType,
+                        userId: newMsg.affectedUserId,                               
+                        userName:newMsg.affectedUserName,
+                        chatId: newMsg.chat_id
+                      }}
+                      );
+                        */
+                  }
+                }
+              }
+              else {
+                  console.warn('Query: Unknown WebSocket message type:', newMsg.type, newMsg);
+              }
+          } catch (e) {
+              console.error('Query: Error processing WebSocket message:', e, event.data);
+          }
+      };
+
+    // **קריטי:** הוסף את ה-Event Listener.
+    // חשוב: לוודא שזה לא יוסיף מאזין כפול.
+    // ניתן להסיר מאזין קודם לפני הוספת חדש אם Query רץ מספר פעמים.
+    // אבל מאחר שזה מ-useEffect, אמור לטפל ב-cleanup.
+    webSocket.addEventListener('message', handleIncomingWebSocketMessage);
+
+    // **חשוב:** אם Query זה יופעל מספר פעמים, זה ירשום מאזינים כפולים.
+    // עדיף לוודא שה-listener מוסר לפני שה-Query מופעל שוב,
+    // או שהקומפוננטה עצמה תנהל את הוספה/הסרה של listener.
+    // אבל אם זהו ה-useEffect היחיד שמופעל, הוא יטופל על ידי ה-cleanup.
+
+} catch (error) {
+    console.error('Error in connectComponentWebSocket Query:', error);
+}
